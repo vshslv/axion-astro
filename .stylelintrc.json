@@ -1,0 +1,70 @@
+{
+  "extends": "stylelint-config-standard",
+  "overrides": [
+    {
+      "files": ["**/*.astro"],
+      "customSyntax": "postcss-html"
+    }
+  ],
+  "rules": {
+    "property-disallowed-list": [
+      [
+        "/^(left|right|top|bottom)$/",
+        "/^(width|height)$/",
+        "/^margin-(left|right|top|bottom)$/",
+        "/^padding-(left|right|top|bottom)$/",
+        "/^border-(left|right|top|bottom)$/",
+        "/^border-(left|right|top|bottom)-(color|style|width)$/",
+        "/^border-(top|bottom)-(left|right)-radius$/"
+      ],
+      {
+        "message": "Use logical properties: `inset-inline-start`, `block-size`, `margin-block-start`, `padding-inline`, `border-inline-start`, `border-start-start-radius`, etc."
+      }
+    ],
+    "declaration-property-value-disallowed-list": null,
+    "at-rule-no-unknown": [
+      true,
+      {
+        "ignoreAtRules": [
+          "theme",
+          "plugin",
+          "source",
+          "utility",
+          "variant",
+          "custom-variant",
+          "tailwind",
+          "apply",
+          "screen",
+          "layer",
+          "config",
+          "reference"
+        ]
+      }
+    ],
+    "import-notation": null,
+    "no-descending-specificity": null,
+    "selector-class-pattern": null,
+    "custom-property-pattern": null,
+    "keyframes-name-pattern": null,
+    "value-keyword-case": null,
+    "color-function-notation": null,
+    "color-function-alias-notation": null,
+    "color-hex-length": null,
+    "alpha-value-notation": null,
+    "media-feature-range-notation": null,
+    "no-duplicate-selectors": null,
+    "comment-empty-line-before": null,
+    "declaration-block-no-shorthand-property-overrides": null,
+    "declaration-block-no-redundant-longhand-properties": null,
+    "shorthand-property-no-redundant-values": null,
+    "rule-empty-line-before": null,
+    "no-empty-source": null,
+    "function-url-quotes": null,
+    "property-no-vendor-prefix": null,
+    "value-no-vendor-prefix": null,
+    "selector-no-vendor-prefix": null,
+    "at-rule-empty-line-before": null,
+    "declaration-empty-line-before": null,
+    "custom-property-empty-line-before": null
+  }
+}

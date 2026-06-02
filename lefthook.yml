@@ -1,0 +1,8 @@
+# Lefthook config — runs Stylelint on staged .astro and .css files before commit.
+# Install hooks once: `pnpm exec lefthook install`
+pre-commit:
+  parallel: true
+  commands:
+    stylelint:
+      glob: "**/*.{astro,css}"
+      run: pnpm exec stylelint {staged_files}

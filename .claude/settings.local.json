@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "WebFetch",
+      "WebSearch",
+      "mcp__*",
+      "Skill",
+      "TaskCreate",
+      "TaskUpdate",
+      "TaskList",
+      "TaskGet",
+      "mcp__Figma__get_design_context",
+      "mcp__Figma__get_screenshot",
+      "mcp__Figma__get_variable_defs",
+      "mcp__Figma__get_metadata",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__d510c873-c9e5-49fa-8db3-173c4ac9481b__data_sites_tool",
+      "mcp__d510c873-c9e5-49fa-8db3-173c4ac9481b__data_pages_tool",
+      "mcp__d510c873-c9e5-49fa-8db3-173c4ac9481b__de_page_tool",
+      "mcp__d510c873-c9e5-49fa-8db3-173c4ac9481b__element_tool",
+      "mcp__Control_Chrome__list_tabs",
+      "mcp__Control_Chrome__open_url",
+      "mcp__Control_Chrome__execute_javascript",
+      "mcp__Claude_in_Chrome__list_connected_browsers",
+      "mcp__d510c873-c9e5-49fa-8db3-173c4ac9481b__style_tool",
+      "mcp__db2606c3-fbb0-4f85-a998-7dc8c071fa76__data_sites_tool",
+      "mcp__db2606c3-fbb0-4f85-a998-7dc8c071fa76__data_pages_tool",
+      "mcp__db2606c3-fbb0-4f85-a998-7dc8c071fa76__de_page_tool",
+      "mcp__db2606c3-fbb0-4f85-a998-7dc8c071fa76__element_tool",
+      "mcp__db2606c3-fbb0-4f85-a998-7dc8c071fa76__data_scripts_tool",
+      "Bash(echo \"--- exit:$? \\(1 = none found, good\\) ---\")"
+    ]
+  }
+}

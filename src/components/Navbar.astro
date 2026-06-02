@@ -1,0 +1,1552 @@
+---
+/**
+ * Navbar.astro — persistent floating central navigation (Figma node 778:22064)
+ *
+ * Architecture — TWO nested rounded surfaces (not one morphing container):
+ *   - .navbar__panel  — outer frame, 290 wide, rounded 34px. Block-size
+ *                         animates between pill+gutters (closed) and the
+ *                         full viewport (open). Dark translucent surface;
+ *                         intentionally no backdrop-filter on this layer so
+ *                         the inner pill's liquid-glass filter sees the real
+ *                         document backdrop, not the panel's pre-blurred
+ *                         output (Chrome's nested backdrop-filter rule).
+ *   - .navbar__pill     — inner pill, 270×50, rounded 30px. Always visible.
+ *                         Full liquid-glass recipe (1:1 with the Header CTA).
+ *                         The whole pill is a <button> that toggles the panel.
+ *
+ * Open/close model:
+ *   - Hover-capable devices (desktop): mouseenter on panel → open,
+ *     mouseleave → close after a ~180 ms grace window.
+ *   - Touch devices: click on the pill toggles.
+ *   - Always: Escape closes when open; click outside closes when open;
+ *     keyboard focus on the pill button + Enter/Space activates the click.
+ *
+ * Burger morph: lines just SPREAD APART on open (translateY ±3px). No X
+ * transform — the spread reads as "the menu opens out from the centre",
+ * thematically matching the panel expanding downward.
+ *
+ * Centered logo: grid-template-columns: 1fr auto 1fr — empty left cell
+ * mirrors the burger's right cell, leaving the wordmark dead-centre.
+ *
+ * Sphere: dynamic-imported from src/three/sphere.ts on first open. Three.js
+ * sphere2.0 (vshslv/sphere2.0) drives state on chat events 1:1 with the
+ * source demo — input focus → listening, submit → thinking → speaking →
+ * streamed reply (per-word speakPulse, tail eases toward normal) → normal.
+ *
+ * Assets:
+ *   src/assets/axion-wordmark.svg — Axion wordmark, inlined via ?raw.
+ *
+ * Typography flagged: Figma uses ABC Diatype Plus Variable (unlicensed) —
+ * substituted with Geist Variable per @theme + CLAUDE.md figma workflow.
+ *
+ * Copy preserved literally on first pass (Rule #6 — flagged, not silently
+ * fixed): "I'm you personal assistant and I wil be guiding" — likely
+ * typos ("your", "will").
+ */
+import axionWordmark from "../assets/axion-wordmark.svg?raw";
+
+const links = [
+  { label: "About Axion", href: "#about" },
+  { label: "Features", href: "#features" },
+  { label: "SPAR Framework", href: "#spar" },
+  { label: "FAQ", href: "#faq" },
+  { label: "Request a briefing", href: "#briefing" },
+];
+
+const chips = ["Start project", "Show all works", "What the Datum?"];
+---
+
+{/* Full-viewport dim + soft blur behind the navbar when open. Lighter than
+    the video modal's backdrop (rgba 0.3 + blur 10px vs modal's 0.55 + 24px).
+    JS toggles data-state on this element in sync with the panel. */}
+<div class="navbar-backdrop" aria-hidden="true" data-state="closed"></div>
+
+<nav class="navbar" aria-label="Main navigation">
+  <div class="navbar__panel" data-state="closed">
+    {/* The pill IS the toggle button. Whole pill clickable.
+        The visual wordmark and burger are decorative inside the button. */}
+    <button
+      class="navbar__pill liquid"
+      type="button"
+      aria-label="Open menu"
+      aria-expanded="false"
+      aria-controls="navbar-body"
+    >
+      <div class="liquid__filter" aria-hidden="true"></div>
+      <div class="liquid__overlay" aria-hidden="true"></div>
+      <div class="liquid__specular" aria-hidden="true"></div>
+      <div class="liquid__content navbar__pill-inner">
+        {/* Empty spacer mirrors the burger's column so the logo lands centre */}
+        <span class="navbar__pill-spacer" aria-hidden="true"></span>
+        <span class="navbar__logo" aria-hidden="true" set:html={axionWordmark} />
+        {/* Burger as two HTML lines (not SVG paths) — Chrome reliably honours
+            CSS transform on block elements; SVG path transforms via transform-box
+            have flaky cross-browser support. Flex column + justify-content:
+            space-between sets the resting 6px center-to-center gap. */}
+        <span class="navbar__burger" aria-hidden="true">
+          <span class="navbar__burger-line navbar__burger-line--top"></span>
+          <span class="navbar__burger-line navbar__burger-line--bottom"></span>
+        </span>
+      </div>
+    </button>
+
+    <div class="navbar__body" id="navbar-body" inert>
+      <section class="navbar__menu" aria-label="Sections">
+        {/* "Up" — clickable scroll-to-top anchor. Closes the menu and
+            smooth-scrolls the page to scrollY 0 via Lenis. Rendered as
+            <button> rather than <a href="#top"> because the action is
+            stateful (close panel + scroll), not a URL navigation, and
+            we want focus/keyboard semantics, not history. */}
+        <button class="navbar__label navbar__label--btn" type="button" data-scroll-top>
+          Up
+        </button>
+        <ul class="navbar__links">
+          {/* Group of links — no per-item mask swap; the focus-on-hover
+              effect (others fade + blur) is the group-level affordance. */}
+          {links.map((link) => (
+            <li>
+              <a class="navbar__link" href={link.href}>{link.label}</a>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section class="navbar__assistant" aria-label="AI assistant">
+        <div class="navbar__sphere" aria-hidden="true">
+          {/* Three.js sphere mounts here on first open via dynamic import.
+              The placeholder fades the moment the canvas paints its first frame. */}
+          <div class="navbar__sphere-canvas"></div>
+          <div class="navbar__sphere-placeholder"></div>
+        </div>
+        <p class="navbar__assistant-title">Ask anything</p>
+
+        <div class="navbar__chat">
+          <div class="navbar__chat-messages" role="log" aria-live="polite">
+            <p class="navbar__chat-msg navbar__chat-msg--bot navbar__chat-intro">
+              Hello stranger and welcome! I&rsquo;m you personal assistant and I wil
+              be guiding you through your journey.
+            </p>
+          </div>
+          <div class="navbar__chat-chips">
+            {/* Group of chips — no per-item mask; neighbour fade-blur on hover. */}
+            {chips.map((chip) => (
+              <button class="navbar__chat-chip" type="button" data-chip={chip}>{chip}</button>
+            ))}
+          </div>
+          <form class="navbar__chat-form">
+            <span class="navbar__chat-icon" aria-hidden="true">
+              <svg viewBox="0 0 10 10" fill="none">
+                <path
+                  fill="currentColor"
+                  fill-rule="evenodd"
+                  clip-rule="evenodd"
+                  d="M4.84971 1C2.72357 1 1 2.72357 1 4.8497C1 6.97582 2.72357 8.69939 4.84971 8.69939C5.74403 8.69939 6.56713 8.39444 7.22069 7.88284L9.20072 9.86287C9.38357 10.0457 9.68002 10.0457 9.86287 9.86287C10.0457 9.68002 10.0457 9.38357 9.86287 9.20072L7.88284 7.2207C8.39445 6.56714 8.69942 5.74403 8.69942 4.8497C8.69942 2.72357 6.97585 1 4.84971 1ZM1.93642 4.8497C1.93642 3.24073 3.24074 1.93641 4.84971 1.93641C6.45868 1.93641 7.763 3.24073 7.763 4.8497C7.763 6.45866 6.45868 7.76298 4.84971 7.76298C3.24074 7.76298 1.93642 6.45866 1.93642 4.8497Z"
+                />
+              </svg>
+            </span>
+            <input
+              class="navbar__chat-input"
+              type="text"
+              placeholder="Ask anything"
+              aria-label="Ask anything"
+              autocomplete="off"
+            />
+            <button class="navbar__chat-send" type="submit" aria-label="Send">
+              <span class="navbar__chat-send-mask">
+                <span class="navbar__chat-send-text" data-text="default">Send</span>
+                <span class="navbar__chat-send-text" data-text="hover" aria-hidden="true">Send</span>
+              </span>
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <footer class="navbar__footer">
+        {/* Footer pair — group; no per-item mask; neighbour fade-blur on hover. */}
+        <a
+          class="navbar__footer-link"
+          href="https://www.linkedin.com/"
+          target="_blank"
+          rel="noreferrer"
+        >Linkedin</a>
+        {/* Email is an <a> with mailto fallback so the link still works if JS
+            fails. The click handler in the script below preventDefaults and
+            copies to the clipboard instead, briefly swapping the label to a
+            centred "Copy" — explicitly NO hover swap (per design: the email
+            is the one footer item that doesn't participate in the standard
+            text-swap / neighbour fade-blur hover language). */}
+        <a
+          class="navbar__footer-email"
+          href="mailto:info@thedatum.ai"
+          data-email="info@thedatum.ai"
+          aria-label="Copy email info@thedatum.ai"
+        >
+          <span class="navbar__footer-email-mask">
+            <span class="navbar__footer-email-text" data-text="default">info@thedatum.ai</span>
+            <span class="navbar__footer-email-text" data-text="copied" aria-hidden="true">Copy</span>
+          </span>
+        </a>
+      </footer>
+    </div>
+  </div>
+</nav>
+
+<style>
+  /* =================================================================
+     BACKDROP — full-viewport dim + soft blur when the nav is open.
+     Sits at z:99 (below the navbar wrapper at z:100) so it covers hero
+     content but not the panel itself. Lighter than the modal backdrop
+     by design — the navbar is a disclosure, not a modal.
+     ================================================================= */
+  .navbar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    opacity: 0;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+    transition: opacity var(--dur-morph-fast) var(--ease-morph);
+  }
+  .navbar-backdrop[data-state="open"] {
+    opacity: 1;
+    pointer-events: auto;            /* catch clicks so they close the menu */
+    transition: opacity var(--dur-morph) var(--ease-morph);
+  }
+
+  /* =================================================================
+     FIXED WRAPPER — viewport-anchored UI (Rule #8 allowlist, approved).
+     Spans the FULL viewport (inset: 0) so the inner panel can grow up to
+     the available height. The 10px top gutter lives on padding-block-start
+     instead of an inset offset — that keeps the wrapper a proper viewport-
+     sized flex container so the panel isn't squeezed into its closed-state
+     content height when it tries to expand. flex-start prevents stretch on
+     the cross axis. pointer-events:none lets clicks pass through the
+     invisible flanks; panel restores pointer-events:auto.
+     ================================================================= */
+  .navbar {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-block-start: 0.625rem;        /* 10px top gutter */
+  }
+
+  /* =================================================================
+     PLASHKA — outer frame, 290 wide, padding 10px.
+     Block-size morphs between pill-tight (closed) and full viewport (open).
+     Uses the canonical Axion glass treatment (27.5px backdrop blur, dark
+     translucent surface). The inner pill is nested inside it — Chrome
+     composites the pill's own backdrop-filter on top of the panel's
+     blurred output, which still reads as glass-on-glass (just with the
+     SVG distortion applied to the already-blurred page).
+     ================================================================= */
+  .navbar__panel {
+    pointer-events: auto;
+    /* `relative` so ::before below can position absolutely within the
+       panel (the invisible safe-zone halo). */
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    /* `--navbar-w-default` and `--navbar-w-open` drive a width morph on touch
+       devices (the JS sets style.width via GSAP). Desktop never tweens width —
+       it stays at the default through the entire open/close cycle. */
+    --navbar-w-default: 18.125rem;          /* 290px */
+    inline-size: var(--navbar-w-default);
+    max-inline-size: calc(100vw - 1.25rem);
+    /* Closed height = pill (50) + padding (10×2) + border (1×2) = 72px.
+       The +2px accounts for the 1px panel border under box-sizing: border-box,
+       which previously ate the bottom padding and left the pill visually
+       offset upward (≈11px top gutter, ≈9px bottom). */
+    block-size: 4.5rem;                   /* 72px */
+    padding: 0.625rem;                    /* 10px all sides */
+    /* Closed-state: panel itself is transparent. A filled background
+       here (even without blur) would sit between the pill and the
+       page, so pill's backdrop-filter url(#lg-dist) would refract a
+       uniform surface and the liquid effect would collapse to a flat
+       tint. The dark "frame" around the pill is drawn by a box-shadow
+       on the pill itself (see .navbar__pill below) — that paints in
+       the panel's 10px padding ring without blocking the area under
+       the pill. */
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-panel);   /* 34px */
+    /* No block-size in this transition list. The open/close timelines
+       (animateOpen/animateClose in the script) tween panel height with
+       their own multi-stage curve (stage 1 → hold → stage 2). If we
+       leave block-size in here, every GSAP height write triggers a
+       CSS transition over var(--dur-morph-fast) on top, which smears
+       the hold between stages — the two-step motion collapses to one
+       continuous slide. Other props (background / border / backdrop)
+       are not GSAP-managed, so they keep their CSS transitions. */
+    transition:
+      background var(--dur-morph-fast) var(--ease-morph),
+      border-color var(--dur-morph-fast) var(--ease-morph),
+      backdrop-filter var(--dur-morph-fast) var(--ease-morph),
+      transform var(--dur-morph) var(--ease-morph),
+      opacity var(--dur-morph) var(--ease-morph);
+  }
+
+  /* Invisible safe-zone halo — extends the panel's hit-test area by
+     16px in every direction. mouseleave on .navbar__panel only fires
+     when the cursor exits THIS expanded boundary, so a small overshoot
+     past the visible panel edge keeps the menu open without any
+     pointer-position-tracking JS. Desktop-only (touch has no hover);
+     only present while the panel is open (no point catching pointers
+     near a closed pill — and a halo around the closed pill would
+     intercept clicks on adjacent UI). */
+  @media (hover: hover) and (pointer: fine) {
+    .navbar__panel[data-state="open"]::before {
+      content: "";
+      position: absolute;
+      inset: -16px;
+      border-radius: inherit;
+      pointer-events: auto;
+      /* No visible paint — just a hit-test region. z-index keeps it
+         behind the panel content so it never steals clicks from links. */
+      z-index: -1;
+    }
+  }
+
+  /* Open state — light glass per Figma (node 771:13844):
+     bg = rgba(255,255,255,0.1), backdrop-blur 27.5px, NO border.
+     Was previously dark glass + 1px white border, which deviated from
+     the design. */
+  .navbar__panel[data-state="open"] {
+    background: var(--color-glass);       /* rgba(255,255,255,0.1) */
+    backdrop-filter: blur(27.5px);        /* 27.5px — brand canon */
+    -webkit-backdrop-filter: blur(27.5px);
+    /* border stays transparent (declared on the base rule above) */
+  }
+
+  /* Footer hand-off — while the footer owns the screen the floating pill slides
+     up out of view (the footer carries its own nav), then eases back on
+     scroll-up. `data-hidden` on .navbar is toggled by a ScrollTrigger in
+     Footer.astro; the slide + fade live here. Reduced-motion (below) snaps it
+     instantly via `transition: none`, so the hide still works without motion. */
+  .navbar[data-hidden] .navbar__panel {
+    transform: translateY(-150%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* The open-state morph (and the corresponding sections reveal) is driven
+     imperatively by GSAP in the script below — orchestrated timelines stay
+     in JS per the project convention (CSS first for trivial transitions /
+     hover, GSAP for sequenced animations). Panel block-size + the menu /
+     assistant / footer opacity are all set inline by the timeline. */
+
+  /* =================================================================
+     PILL — the always-visible interactive surface.
+     Full liquid-glass recipe, identical to .hero__cta-top.
+     The whole button area is clickable + drives the open/close action.
+     ================================================================= */
+  .navbar__pill {
+    flex-shrink: 0;
+    inline-size: 100%;                    /* fills panel inner = 270px */
+    block-size: 3.125rem;                 /* 50px */
+    border: 0;
+    padding: 0;
+    /* 12% white base — gives the pill enough body to stay distinct
+       both against the page (dark hero) AND against the open-state
+       panel (10% white glass). Combined with the liquid overlay (10%
+       on top) the effective tint reads around 22%, matching the
+       Figma pill which is clearly brighter than the surrounding
+       light-glass panel. */
+    background: rgba(255, 255, 255, 0.12);
+    /* Dark "frame" ring painted in the panel's 10px padding area via
+       box-shadow with 10px spread. Sits OUTSIDE the pill so backdrop
+       under the pill stays untouched (so pill's liquid displacement
+       still refracts the real page). Inset specular highlights live
+       on .liquid__specular (z-index 2, above the displacement filter)
+       so they aren't smeared by the url(#lg-dist) backdrop-filter —
+       see override at the bottom of this file.
+       Spread in rem (0.625rem = 10px at design baseline) so the ring
+       scales with the rest of the pill on 4K — at 2× design font-size,
+       it becomes 20px, matching the now-doubled panel padding. */
+    box-shadow: 0 0 0 0.625rem rgba(0, 0, 0, 0.22);
+    border-radius: var(--radius-pill);    /* 30px */
+    color: var(--color-fg);
+    cursor: pointer;
+    font-family: inherit;
+    overflow: hidden;
+    /* user-select: none — button text is non-selectable per Buttons convention */
+    user-select: none;
+    -webkit-user-select: none;
+    transition:
+      transform 0.2s ease,
+      box-shadow var(--dur-morph-fast) var(--ease-morph);
+  }
+
+  /* Open state — drop the outer dark frame (panel's own dark glass
+     now provides the framing). Specular highlights live on
+     .liquid__specular and aren't affected by this rule. */
+  .navbar__panel[data-state="open"] .navbar__pill {
+    box-shadow: none;
+  }
+  .navbar__pill:active {
+    transform: scale(0.99);
+  }
+  .navbar__pill:focus-visible {
+    outline: 2px solid var(--color-fg);
+    outline-offset: 4px;
+  }
+
+  /* Liquid glass recipe (.liquid stack) lives in src/styles/global.css.
+     The SVG filter defs #lg-dist / #lg-dist-sm referenced by .liquid__filter
+     are defined inside Header.astro and shared across pages. */
+
+  /* =================================================================
+     PILL INNER — grid keeps the logo dead-centre between two equal cells.
+     Layout: [ spacer 1fr | logo auto | burger 1fr ]
+     ================================================================= */
+  .navbar__pill-inner {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding-inline: var(--space-sm);
+    block-size: 100%;
+  }
+
+  .navbar__pill-spacer {
+    /* deliberately empty — mirrors the burger column so the logo centres */
+  }
+
+  .navbar__logo {
+    justify-self: center;
+    inline-size: 4.4375rem;               /* 71px ≈ Figma 71.1 wordmark width */
+    block-size: 1.3125rem;                /* 21px ≈ Figma 20.6 wordmark height */
+    line-height: 0;
+    display: inline-block;
+  }
+
+  /* Burger: 20×7 box, two 1px horizontal lines top/bottom, gap between
+     centres = 6. Open state grows the burger to 13px tall; the flex parent's
+     justify-content: space-between pushes the lines to the new edges →
+     centre-to-centre gap becomes 12 (1:1 with the spec). Animating the
+     PARENT's block-size is simpler and more reliable than animating each
+     child's transform (which had paint-quirks on SVG paths AND on flex
+     children in this stack).
+     The block-size resting value lives here as a fallback for the brief
+     moment before the script hydrates; once GSAP runs, the open/close
+     timeline drives `style.height` inline in two stages synced with the
+     panel morph (stage 1 → 10px / stage 2 → 13px), so the burger reads as
+     one motion with the panel. The CSS transition is intentionally absent —
+     all motion is GSAP-orchestrated to keep stage timings 1:1. */
+  .navbar__burger {
+    justify-self: end;
+    inline-size: 1.25rem;                 /* 20px */
+    block-size: 0.4375rem;                /* 7px → 6px centre-gap (resting) */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .navbar__burger-line {
+    display: block;
+    inline-size: 100%;
+    block-size: 1px;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  /* =================================================================
+     BODY — hidden when closed, fades + slides in when open.
+     padding-block-start = the 10px gap between pill bottom and "Up" label.
+     ================================================================= */
+  .navbar__body {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-block-start: var(--space-md);
+    padding-block-end: 0;
+    opacity: 0;
+    pointer-events: none;
+    /* Body itself doesn't transition — individual sections own their fade
+       timings so they can stagger with the staged panel animation. */
+  }
+  .navbar__panel[data-state="open"] .navbar__body {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* =================================================================
+     MENU SECTION — "Up" + 5 links + divider
+     ================================================================= */
+  .navbar__menu {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    /* opacity + translateY animated imperatively by the GSAP open/close
+       timeline. The element starts hidden via inline-style set by the
+       script on first mount. */
+  }
+
+  .navbar__label {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.4;
+    color: var(--color-fg);
+    opacity: 0.2;
+    letter-spacing: -0.03em;
+  }
+
+  /* When rendered as a button (the "Up" scroll-to-top trigger) — strip
+     UA defaults and add hover affordance. The opacity ramp signals that
+     the previously-static label is interactive. */
+  .navbar__label--btn {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-family: inherit;
+    text-align: start;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: opacity var(--dur-hover) var(--ease-out-soft);
+  }
+  @media (hover: hover) {
+    .navbar__label--btn:hover {
+      opacity: 0.6;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .navbar__label--btn {
+      transition: none;
+    }
+  }
+
+  .navbar__links {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    /* No gap — the row spacing lives inside each link as padding-block so the
+       full row (including former gap) is hover-active. With gap, the empty
+       strip between items dropped the :hover, blanking the fade-blur effect
+       mid-cursor-travel. Padding-block: 0.3125rem on each link reproduces the
+       previous 10px visual rhythm (5px above + 5px below = 10px between
+       baselines) while making every pixel of the list a hover target. */
+    gap: 0;
+  }
+
+  .navbar__link {
+    color: var(--color-fg);
+    text-decoration: none;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    letter-spacing: -0.03em;
+    display: block;                       /* full-row hover target */
+    padding-block: 0.3125rem;             /* 5px top + 5px bottom = 10px rhythm */
+    user-select: none;
+    -webkit-user-drag: none;
+    /* Focus-on-hover: when another link is hovered (see :has rule below), this
+       one fades + blurs. The transitions share the canonical hover tokens so
+       it reads as part of the same motion language as the mask text swap. */
+    transition:
+      opacity var(--dur-hover) var(--ease-out-soft),
+      filter var(--dur-hover) var(--ease-out-soft);
+  }
+  /* When the user hovers any link, the others fade to 40% and blur slightly.
+     Desktop-only — touch devices skip this so tap targets stay legible. */
+  @media (hover: hover) {
+    .navbar__links:has(.navbar__link:hover) .navbar__link:not(:hover) {
+      opacity: 0.4;
+      filter: blur(2px);
+    }
+  }
+
+  /* =================================================================
+     ASSISTANT SECTION — sphere + Ask anything + chat card.
+     margin-block-start: auto pushes assistant + footer to bottom of body.
+     ================================================================= */
+  .navbar__assistant {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2xs);
+    margin-block-start: auto;
+    /* opacity + translateY animated by the GSAP timeline (reveals AFTER
+       the panel has finished opening — see script). */
+  }
+
+  .navbar__sphere {
+    position: relative;
+    /* Figma spec is 99×100 but at that size the bloom halo dissolves the
+       shell detail (the 100px canvas is barely bigger than the orb itself).
+       Bumped to 120×120 so the orb dominates the widget without bloom mush. */
+    inline-size: 7.5rem;                  /* 120px */
+    block-size: 7.5rem;                   /* 120px */
+    border-radius: 50%;
+    overflow: hidden;
+    /* Warm radial wash sits BEHIND the canvas to fill the orb's interior
+       so it doesn't read as a "black hole" against the translucent panel.
+       Centred slightly above middle to match the orb's perceived weight. */
+    background: radial-gradient(
+      circle at 50% 45%,
+      rgba(255, 195, 130, 0.16) 0%,
+      rgba(255, 165, 90, 0.08) 35%,
+      transparent 70%
+    );
+    /* plus-lighter so the orb (and the warm wash) composite additively over
+       the panel glass — brightens the area without flattening contrast. */
+    mix-blend-mode: plus-lighter;
+    transition:
+      inline-size var(--dur-morph-fast) var(--ease-morph),
+      block-size var(--dur-morph-fast) var(--ease-morph);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* Disable the open/close size-morph on the orb widget (the breathing
+       placeholder animation is guarded separately below). */
+    .navbar__sphere {
+      transition: none;
+    }
+  }
+  .navbar__sphere-canvas {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    opacity: 0;
+    transition: opacity 0.4s ease-out;
+  }
+  .navbar__sphere-canvas[data-ready] {
+    opacity: 1;
+  }
+  /* Placeholder fades away when the canvas reports ready */
+  .navbar__sphere-placeholder {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      circle at 40% 35%,
+      rgba(255, 220, 180, 0.95) 0%,
+      rgba(180, 120, 60, 0.55) 28%,
+      rgba(60, 30, 10, 0.85) 65%,
+      rgba(0, 0, 0, 0) 95%
+    );
+    animation: navbar-sphere-breath 4s ease-in-out infinite;
+    transition: opacity 0.4s ease-out;
+  }
+  .navbar__sphere-canvas[data-ready] + .navbar__sphere-placeholder,
+  .navbar__sphere:has(.navbar__sphere-canvas[data-ready]) .navbar__sphere-placeholder {
+    opacity: 0;
+    animation: none;
+  }
+  @keyframes navbar-sphere-breath {
+    0%, 100% {
+      opacity: 0.85;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.04);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .navbar__sphere-placeholder { animation: none; }
+  }
+
+  .navbar__assistant-title {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.4;
+    color: var(--color-fg);
+    text-align: center;
+    letter-spacing: -0.03em;
+  }
+
+  /* =================================================================
+     CHAT CARD — 270 wide, dark surface, 8px radius
+     ================================================================= */
+  .navbar__chat {
+    inline-size: 100%;
+    padding: var(--space-2xs);
+    background: var(--color-glass-dark);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  .navbar__chat-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    max-block-size: 12rem;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  }
+  .navbar__chat-msg {
+    margin: 0;
+    font-size: 0.625rem;                  /* 10px — Figma */
+    line-height: 1.4;
+    color: var(--color-fg);
+    letter-spacing: -0.03em;
+    padding-block: 0.25rem;
+    padding-inline: 0.375rem;
+    border-radius: 0.5rem;
+    max-inline-size: 92%;
+  }
+  .navbar__chat-msg--bot {
+    background: rgba(255, 255, 255, 0.04);
+    align-self: flex-start;
+  }
+  .navbar__chat-msg--user {
+    background: rgba(255, 255, 255, 0.10);
+    align-self: flex-end;
+  }
+  .navbar__chat-intro {
+    /* keep the intro paragraph borderless — reads as preamble, not a bubble */
+    background: transparent;
+    padding: 0;
+    max-inline-size: 100%;
+  }
+
+  .navbar__chat-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+  .navbar__chat-chip {
+    border: 0;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--color-fg);
+    padding-block: 0.375rem;
+    padding-inline: 0.625rem;
+    /* Fully rounded pill — matches the Send button below and the
+       overall liquid-pill language. Previously var(--radius-sm) (4px)
+       which read as a tile, not a chip. */
+    border-radius: 999px;
+    /* Same top/bottom specular rim recipe as the liquid buttons, but
+       applied directly (chips don't use the multi-layer .liquid stack
+       since they're tiny and don't need a real displacement filter
+       at this scale). */
+    box-shadow:
+      inset 0 1px 1px -0.5px rgba(255, 255, 255, 0.32),
+      inset 0 -1px 1px -0.5px rgba(255, 255, 255, 0.12);
+    cursor: pointer;
+    opacity: 0.8;
+    font-family: inherit;
+    font-size: var(--text-2xs);
+    /* filter included so the neighbour fade-blur transitions smoothly. */
+    transition:
+      opacity var(--dur-hover) var(--ease-out-soft),
+      background var(--dur-hover) var(--ease-out-soft),
+      filter var(--dur-hover) var(--ease-out-soft);
+  }
+  .navbar__chat-chip:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.12);
+  }
+  @media (hover: hover) {
+    .navbar__chat-chips:has(.navbar__chat-chip:hover) .navbar__chat-chip:not(:hover) {
+      opacity: 0.4;
+      filter: blur(2px);
+    }
+  }
+
+  /* Chat form — grid: magnifier | input | send pill */
+  .navbar__chat-form {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: var(--space-2xs);
+    padding-block: 0.375rem;
+    padding-inline: 0.625rem 0.25rem;
+    border-radius: var(--radius-pill);
+    background: rgba(0, 0, 0, 0.18);
+  }
+  .navbar__chat-form:focus-within {
+    outline: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  .navbar__chat-icon {
+    color: var(--color-fg);
+    opacity: 0.6;
+    display: inline-flex;
+    inline-size: 0.625rem;
+    block-size: 0.625rem;
+  }
+  .navbar__chat-icon > svg {
+    inline-size: 100%;
+    block-size: 100%;
+    display: block;
+  }
+  .navbar__chat-input {
+    border: 0;
+    background: transparent;
+    color: var(--color-fg);
+    font-family: inherit;
+    font-size: 0.625rem;
+    line-height: 1.4;
+    padding: 0;
+    min-inline-size: 0;
+  }
+  .navbar__chat-input::placeholder {
+    color: var(--color-fg);
+    opacity: 0.8;
+  }
+  .navbar__chat-input:focus-visible {
+    outline: none;
+  }
+
+  .navbar__chat-send {
+    border: 0;
+    background: var(--color-glass);
+    color: var(--color-fg);
+    padding-block: 0.3125rem;
+    padding-inline: 0.625rem;
+    border-radius: var(--radius-pill);
+    /* Same specular rim as liquid buttons. Applied directly (no
+       multi-layer .liquid stack) because Send is tiny and doesn't
+       need the displacement filter — just the highlight feel. */
+    box-shadow:
+      inset 0 1px 1px -0.5px rgba(255, 255, 255, 0.4),
+      inset 0 -1px 1px -0.5px rgba(255, 255, 255, 0.18);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: var(--text-2xs);
+    transition: background var(--dur-hover) var(--ease-out-soft);
+  }
+  .navbar__chat-send:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+  .navbar__chat-send:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .navbar__chat-send-mask {
+    display: inline-grid;
+    grid-template-areas: "stack";
+    overflow: hidden;
+    vertical-align: bottom;
+    block-size: calc(0.5625rem * var(--leading-snug));
+    /* Optical correction: shift the mask up by 1px so the cap-line of "Send"
+       sits visually centred against the magnifier icon and pill body. At 9px
+       font-size the line-box descender slot drags the glyphs down a hair too
+       far without this nudge. */
+    transform: translateY(-1px);
+  }
+  .navbar__chat-send-text {
+    grid-area: stack;
+    white-space: nowrap;
+    transition: transform var(--dur-hover) var(--ease-out-soft);
+  }
+  .navbar__chat-send-text[data-text="default"] { transform: translateY(0); }
+  .navbar__chat-send-text[data-text="hover"]   { transform: translateY(100%); }
+  @media (hover: hover) {
+    .navbar__chat-send:hover .navbar__chat-send-text[data-text="default"] { transform: translateY(-100%); }
+    .navbar__chat-send:hover .navbar__chat-send-text[data-text="hover"]   { transform: translateY(0); }
+  }
+
+  /* =================================================================
+     FOOTER — divider + Linkedin + email
+     ================================================================= */
+  .navbar__footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    padding-block-start: var(--space-sm);
+    /* opacity + translateY animated by the GSAP timeline (revealed with
+       the assistant after the panel has finished opening). */
+  }
+  .navbar__footer-link,
+  .navbar__footer-email {
+    color: var(--color-fg);
+    text-decoration: none;
+    font-size: 0.5625rem;                 /* 9px */
+    line-height: 1.4;
+    letter-spacing: -0.03em;
+    user-select: none;
+    -webkit-user-drag: none;
+    /* Synced transitions with the menu-link neighbour fade-blur effect. */
+    transition:
+      opacity var(--dur-hover) var(--ease-out-soft),
+      filter var(--dur-hover) var(--ease-out-soft);
+  }
+  .navbar__footer-link  { opacity: 0.8; }
+  .navbar__footer-email { opacity: 0.2; }
+  /* Email lifts to full opacity ONLY in the post-click feedback window,
+     never on hover — see the .navbar__footer-email[data-copied] rule and
+     the email-specific hover override below. */
+  .navbar__footer-email[data-copied] { opacity: 1; }
+
+  /* 2-state mask for the email label — resting shows the address; click
+     sets [data-copied] for ~1.5s, sliding a centred "Copy" into view, then
+     reverting. There's intentionally no hover state — the email is the one
+     footer item that doesn't take part in the standard text-swap language. */
+  .navbar__footer-email-mask {
+    display: inline-grid;
+    grid-template-areas: "stack";
+    overflow: hidden;
+    vertical-align: bottom;
+    block-size: calc(0.5625rem * var(--leading-snug));
+  }
+  .navbar__footer-email-text {
+    grid-area: stack;
+    white-space: nowrap;
+    transition: transform var(--dur-hover) var(--ease-out-soft);
+  }
+  .navbar__footer-email-text[data-text="default"] { transform: translateY(0); }
+  .navbar__footer-email-text[data-text="copied"]  {
+    transform: translateY(100%);
+    /* Centred so the "Copy" feedback sits visually balanced inside the mask
+       box (which is sized to the longer "info@thedatum.ai" label). */
+    text-align: center;
+  }
+  .navbar__footer-email[data-copied] .navbar__footer-email-text[data-text="default"] { transform: translateY(-100%); }
+  .navbar__footer-email[data-copied] .navbar__footer-email-text[data-text="copied"]  { transform: translateY(0); }
+
+  /* Footer pair — when LinkedIn is hovered, only the LinkedIn lifts; the
+     email is intentionally excluded from the standard neighbour-fade-blur
+     language because its only feedback is the click-driven "Copy" swap,
+     and a hover-fade competing with that would muddle the affordance. */
+
+  /* =================================================================
+     MOBILE — virtual keyboard handling
+     ================================================================= */
+  @media (max-width: 40em) {
+    /* Bump the chat input to 16px on mobile — iOS auto-zooms any input
+       under 16px on focus, which makes the whole site visibly scale up.
+       16px keeps the layout stable. The placeholder/value still reads as
+       intended thanks to letter-spacing. */
+    .navbar__chat-input {
+      font-size: 1rem;                   /* 16px */
+    }
+  }
+  /* (The [data-kb-open] .navbar__sphere shrink lives in <style is:global>
+     below — Astro's scoped-style hashing would attach the cid to the
+     ancestor part of the selector, but <html> doesn't carry the cid.) */
+
+  /* =================================================================
+     REDUCED MOTION
+     ================================================================= */
+  @media (prefers-reduced-motion: reduce) {
+    .navbar__panel,
+    .navbar__body,
+    .navbar__menu,
+    .navbar__assistant,
+    .navbar__footer,
+    .navbar__burger,
+    .navbar__link,
+    .navbar__chat-chip,
+    .navbar__chat-send,
+    .navbar__chat-send-text,
+    .navbar__footer-link,
+    .navbar__footer-email,
+    .navbar__footer-email-text,
+    .navbar__sphere-canvas {
+      transition: none;
+    }
+    /* Skip the staged open keyframes — direct state switch. */
+    .navbar__panel[data-state="open"] {
+      animation: none;
+    }
+  }
+</style>
+
+<style is:global>
+  /* Soft-keyboard sphere shrink. Marked is:global because the [data-kb-open]
+     attribute lives on <html>, which sits outside this component's scope —
+     Astro would otherwise hash the ancestor part of the selector and the
+     rule would never match. */
+  [data-kb-open] .navbar__sphere {
+    inline-size: 4rem;                   /* 64px — shrunken so chat + sphere both fit */
+    block-size: 4rem;
+  }
+</style>
+
+<script>
+  import { gsap } from "gsap";
+  import { CustomEase } from "gsap/CustomEase";
+  import { initSphere, pickResponse, type SphereHandle, type SphereState } from "../three/sphere";
+
+  gsap.registerPlugin(CustomEase);
+  /* Mirrors --ease-out-soft from global.css so GSAP tweens read the same as CSS hover transitions. */
+  CustomEase.create("axEaseOutSoft", "0.22, 1, 0.36, 1");
+
+  /**
+   * Disclosure pattern with two open mechanisms:
+   *   - Click on .navbar__pill (always) — toggles open/closed.
+   *   - Hover on .navbar__panel (desktop only) — opens on mouseenter,
+   *     closes on mouseleave after a short grace window.
+   *
+   * Open visual is a GSAP timeline (per the orchestrations-on-GSAP rule):
+   *   - Stage 1 (0–420ms): panel grows from 70 → 21rem (menu list height),
+   *     menu fades in 100ms after start.
+   *   - Hold (420–580ms): ~160ms pause — menu reads as a stop.
+   *   - Stage 2 (580–1100ms): panel grows from 21rem → full height.
+   *   - Chat reveal (~1150ms onward): assistant + footer fade in AFTER the
+   *     panel settles, so the WebGL sphere mount + chat layout don't fight
+   *     the still-animating block-size (was the source of perceived "lag").
+   *   NOTE: the times above are 1× AUTHORING times. The whole open is played
+   *   back at OPEN_TIME_SCALE× via timeline.timeScale(), so real on-screen
+   *   durations are these divided by OPEN_TIME_SCALE (~20% snappier).
+   *
+   * Sphere init is also deferred to the chat-reveal beat so Three.js context
+   * creation doesn't race the open animation.
+   *
+   * Close: faster, no stages — content fades, panel collapses, both in
+   * parallel (~380ms).
+   *
+   * Escape + click-outside both close.
+   */
+  const panel = document.querySelector<HTMLDivElement>(".navbar__panel");
+  const backdrop = document.querySelector<HTMLDivElement>(".navbar-backdrop");
+  const pill = document.querySelector<HTMLButtonElement>(".navbar__pill");
+  const body = document.querySelector<HTMLDivElement>(".navbar__body");
+  const sphereContainer = document.querySelector<HTMLDivElement>(".navbar__sphere-canvas");
+  const chatInput = document.querySelector<HTMLInputElement>(".navbar__chat-input");
+  const chatForm = document.querySelector<HTMLFormElement>(".navbar__chat-form");
+  const chatSend = document.querySelector<HTMLButtonElement>(".navbar__chat-send");
+  const chatMessages = document.querySelector<HTMLDivElement>(".navbar__chat-messages");
+  const chips = Array.from(document.querySelectorAll<HTMLButtonElement>(".navbar__chat-chip"));
+
+  if (panel && pill && body) {
+    const menuEl = panel.querySelector<HTMLElement>(".navbar__menu");
+    const assistantEl = panel.querySelector<HTMLElement>(".navbar__assistant");
+    const footerEl = panel.querySelector<HTMLElement>(".navbar__footer");
+
+    /* Note: an earlier iteration tried to pop the sphere in with a scale +
+       rotate reveal. Reverted on request — Three.js is sensitive to CSS
+       transforms during initSphere() (it reads container size via
+       getBoundingClientRect, which is transform-aware), and even post-mount
+       transforms cluttered the assistant reveal. The sphere now simply fades
+       in along with the rest of the assistant column via the existing CSS
+       opacity transition on .navbar__sphere-canvas[data-ready]. */
+
+    const isHoverDevice = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const isMobileViewport = () => window.matchMedia("(max-width: 40em)").matches;
+    const HOVER_OUT_DELAY = 110; // ms grace window after mouseleave (snappier close)
+    let hoverOutTimer: number | undefined;
+
+    // ─── Open / close animation (GSAP) ────────────────────────────────
+    // Stage-1 stop height is computed dynamically per-open so the bottom
+    // gap below the last menu item visually matches the top gap between the
+    // pill and the "Up" label. Both gaps = body padding-block-start, which
+    // also tracks the fluid --space-md token across viewports.
+    //
+    //   stage1_panel = pill_block (72 = 50 + 10*2 padding + 1*2 border)
+    //                + body_padding_block_start    ← top gap
+    //                + menu_natural_height
+    //                + body_padding_block_start    ← matching bottom gap
+    //
+    // The full open height = current dvh − 1.25rem (recomputed each open so
+    // it tracks viewport changes / mobile keyboard via visualViewport.height).
+    const CLOSED_PX = 4.5 * 16;       // 72 — closed panel height (50 pill + 10*2 padding + 1*2 border)
+    const PILL_BLOCK_PX = 4.5 * 16;
+    const stage1HeightPx = () => {
+      if (!menuEl || !body) return 21 * 16; // fallback to previous 336px
+      const cs = window.getComputedStyle(body);
+      const padTop = parseFloat(cs.paddingBlockStart || "0") || 0;
+      // scrollHeight reads the natural content height regardless of the
+      // body's current constrained block-size, so we get the menu's true
+      // laid-out height even when the panel is still closed.
+      const menuH = menuEl.scrollHeight;
+      return Math.round(PILL_BLOCK_PX + padTop * 2 + menuH);
+    };
+    const fullOpenPx = () => {
+      const vp = window.visualViewport;
+      const dvh = vp ? vp.height : window.innerHeight;
+      return dvh - 20; // 1.25rem at 16px
+    };
+
+    // Burger spread — staged in lockstep with the panel morph.
+    const burgerEl = panel.querySelector<HTMLElement>(".navbar__burger");
+    const BURGER_CLOSED_PX = 7;      // 0.4375rem — 6px centre gap
+    const BURGER_STAGE1_PX = 10;     // mid spread — feels like "halfway" alongside stage 1
+    const BURGER_OPEN_PX = 13;       // 0.8125rem — 12px centre gap (final)
+
+    // Mobile-only width morph: on touch viewports we widen the panel from its
+    // 290px default to align with the page's global gutters BEFORE expanding
+    // the height. The default panel inline-size matches the closed pill on
+    // desktop, so desktop never triggers this morph (we test isMobileViewport).
+    const DEFAULT_W_PX = 18.125 * 16; // 290 — matches CSS default
+    const pagePaddingPx = () => {
+      // Mirror the global token clamp(1rem, 7vw, 7.5rem) so the open-state
+      // pill aligns with all other content gutters at the current viewport.
+      return Math.min(Math.max(16, window.innerWidth * 0.07), 120);
+    };
+    const expandedWidthPx = () => Math.max(
+      DEFAULT_W_PX,                                 // never narrower than default
+      Math.min(window.innerWidth - 2 * pagePaddingPx(), window.innerWidth - 20),
+    );
+
+    // Initial hidden state for the body sections so the first open animates
+    // from below. GSAP will set inline opacity/y; clearProps on close
+    // restores these.
+    if (menuEl) gsap.set(menuEl, { opacity: 0, y: -4 });
+    if (assistantEl) gsap.set(assistantEl, { opacity: 0, y: -4 });
+    if (footerEl) gsap.set(footerEl, { opacity: 0, y: -4 });
+
+    let activeTl: gsap.core.Timeline | null = null;
+    let sphereMountTimer: number | undefined;
+
+    // Global playback multiplier for the OPEN choreography. >1 = snappier.
+    // Applied via timeline.timeScale() so every beat (panel morph, the hold,
+    // the burger spread, the staggered chat reveal) compresses by the SAME
+    // factor — all the hand-tuned sync points stay locked, the open just
+    // plays faster. (Close is already snappy by design and stays untouched.)
+    const OPEN_TIME_SCALE = 1.2;
+
+    const animateOpen = () => {
+      activeTl?.kill();
+      if (reducedMotion) {
+        // Direct snap — no staged morph
+        gsap.set(panel, { height: fullOpenPx() });
+        gsap.set([menuEl, assistantEl, footerEl].filter(Boolean), { opacity: 1, y: 0 });
+        if (burgerEl) gsap.set(burgerEl, { height: BURGER_OPEN_PX });
+        return;
+      }
+
+      const mobile = isMobileViewport();
+      const widthOffset = mobile ? 0.22 : 0; // mobile: width pre-expands first, then height stages run
+      const tl = gsap.timeline();
+      const stage1 = stage1HeightPx();
+
+      // Stage 0 (mobile only): widen panel to match page gutters BEFORE the
+      // vertical staged open. Desktop skips this and starts at 0 directly.
+      if (mobile) {
+        tl.to(panel, { width: expandedWidthPx(), duration: 0.26, ease: "power3.out" }, 0);
+      }
+
+      //   stage 1:           0 → 0.42 (panel CLOSED → stage1, soft expo.out)
+      //   hold:           0.42 → 0.58 (~160 ms — menu reads as a stop)
+      //   stage 2:        0.58 → 1.10 (panel stage1 → full)
+      //   chat reveal:    1.15 → 1.55 (assistant + footer fade in)
+      //   burger:        same two stages, tied to the panel curve so the
+      //                  spread visibly pauses with the panel and finishes
+      //                  alongside it (one motion, not two competing ones).
+      tl
+        .to(panel, { height: stage1, duration: 0.42, ease: "expo.out" }, widthOffset + 0)
+        .to(menuEl, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, widthOffset + 0.1)
+        .to(panel, { height: fullOpenPx, duration: 0.52, ease: "power3.out" }, widthOffset + 0.58)
+        .to([assistantEl, footerEl].filter(Boolean) as HTMLElement[],
+            { opacity: 1, y: 0, duration: 0.4, ease: "power2.out", stagger: 0.05 }, widthOffset + 1.15);
+
+      if (burgerEl) {
+        /* Two stages, NO hold between them. Stage1 ease-out gives the natural
+           mid-spread "pause" optically, stage2 carries on immediately — reads
+           as two-step but without a visible stutter. End time = 1.10s so the
+           burger finishes in sync with the panel's stage 2. */
+        tl.to(burgerEl, { height: BURGER_STAGE1_PX, duration: 0.42, ease: "axEaseOutSoft" }, widthOffset + 0)
+          .to(burgerEl, { height: BURGER_OPEN_PX,   duration: 0.68, ease: "axEaseOutSoft" }, widthOffset + 0.42);
+      }
+
+      // Play the whole open ~20% faster while keeping every staged sync point
+      // intact (durations + positions above are 1× authoring times).
+      tl.timeScale(OPEN_TIME_SCALE);
+      activeTl = tl;
+    };
+
+    const animateClose = () => {
+      activeTl?.kill();
+      window.clearTimeout(sphereMountTimer);
+      if (reducedMotion) {
+        gsap.set(panel, { clearProps: "height,width" });
+        gsap.set([menuEl, assistantEl, footerEl].filter(Boolean), { opacity: 0, y: -4 });
+        if (burgerEl) gsap.set(burgerEl, { clearProps: "height" });
+        return;
+      }
+
+      const mobile = isMobileViewport();
+      const tl = gsap.timeline();
+
+      // Close is intentionally faster than open — snappy retreat reads as
+      // confidence (open = welcoming, soft; close = decisive, quick). Burger
+      // collapses in a single tween (no staged retreat) so the user gets an
+      // immediate visual confirmation that the close was registered.
+      tl
+        .to([menuEl, assistantEl, footerEl].filter(Boolean) as HTMLElement[],
+            { opacity: 0, y: -4, duration: 0.14, ease: "power2.in" }, 0)
+        .to(panel, {
+          height: CLOSED_PX,
+          duration: 0.22,
+          ease: "power3.in",
+        }, 0);
+
+      if (burgerEl) {
+        tl.to(burgerEl, { height: BURGER_CLOSED_PX, duration: 0.34, ease: "axEaseOutSoft" }, 0);
+      }
+
+      // Mobile: shrink width back to default AFTER height has collapsed, so
+      // the panel doesn't visibly reflow content while still tall.
+      if (mobile) {
+        tl.to(panel, {
+          width: DEFAULT_W_PX,
+          duration: 0.22,
+          ease: "power3.inOut",
+          onComplete: () => gsap.set(panel, { clearProps: "width,height" }),
+        }, 0.18);
+      } else {
+        // Desktop: only height was tweened, clear it once close completes.
+        tl.set(panel, { clearProps: "height" });
+      }
+
+      activeTl = tl;
+    };
+
+    const setState = (open: boolean) => {
+      const next = open ? "open" : "closed";
+      if (panel.dataset.state === next) return;
+      panel.dataset.state = next;
+      if (backdrop) backdrop.dataset.state = next;   // dim + soft blur of page behind
+      pill.setAttribute("aria-expanded", String(open));
+      pill.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+      if (open) {
+        body.removeAttribute("inert");
+        animateOpen();
+        /* Lock background scroll while the menu is open. Two-pronged:
+           1. window.__lenis.stop() — stops the smooth-scroll RAF loop so
+              wheel/trackpad input is ignored.
+           2. html { overflow: hidden } — defends against native scroll
+              gestures Lenis doesn't intercept (iOS touch flick, system
+              scrollbars, dev-tools wheel). Inline style restored on close. */
+        const w = window as Window & { __lenis?: { stop: () => void; start: () => void } };
+        w.__lenis?.stop();
+        document.documentElement.style.overflow = "hidden";
+        // Defer sphere mount until the chat-reveal beat so the WebGL context
+        // creation doesn't race the block-size animation (was visible as a
+        // small stutter mid-open). 1100ms = panel's full settle time at 1×;
+        // divided by OPEN_TIME_SCALE so it still lands on the now-earlier settle.
+        window.clearTimeout(sphereMountTimer);
+        sphereMountTimer = window.setTimeout(() => {
+          if (panel.dataset.state === "open") mountSphere();
+        }, reducedMotion ? 0 : Math.round(1100 / OPEN_TIME_SCALE));
+        // If the sphere was mounted on a previous open and then paused on
+        // close, wake it back up — but only if the tab is in the foreground;
+        // otherwise we'd burn cycles on a hidden viewport.
+        reconcileSphereRunning();
+      } else {
+        body.setAttribute("inert", "");
+        // Closing — bring orb back to its calm baseline visually, then
+        // park its rAF loop. WebGL state stays so the next open is instant.
+        sphere?.setState("normal");
+        animateClose();
+        reconcileSphereRunning();
+        /* Restore background scroll — mirror image of the open lock. */
+        const w = window as Window & { __lenis?: { stop: () => void; start: () => void } };
+        w.__lenis?.start();
+        document.documentElement.style.overflow = "";
+      }
+    };
+
+    // ─── Sphere mount (lazy, single-shot, skipped on reduced motion) ──
+    let sphere: SphereHandle | null = null;
+    let sphereLoading = false;
+
+    /** Sphere should run iff: panel is open AND user isn't idle (idle =
+     *  tab hidden, or 8s with no input — see the global tracker in
+     *  BaseLayout.astro). Anywhere else, pause to free rAF + GPU. */
+    const reconcileSphereRunning = () => {
+      if (!sphere) return;
+      const userPresent = !document.documentElement.hasAttribute("data-idle");
+      const shouldRun = panel.dataset.state === "open" && userPresent;
+      if (shouldRun) sphere.resume();
+      else sphere.pause();
+    };
+
+    async function mountSphere() {
+      if (sphere || sphereLoading || !sphereContainer) return;
+      if (reducedMotion) return; // placeholder stays
+      sphereLoading = true;
+      try {
+        // Tuned for the 120px sphere container against the translucent panel.
+        // The original sphere2.0 demo lives on a fully black backdrop; here the
+        // panel is lighter, so the orb's interior risked reading as a black
+        // void. Slightly hotter bloom (0.8 vs 0.65) + wider radius (0.5 vs 0.4)
+        // fills the interior while still letting individual shell particles
+        // read at this size.
+        sphere = initSphere(sphereContainer, { bloomScale: 0.8, bloomRadius: 0.5 });
+        sphereContainer.setAttribute("data-ready", "");
+        // Edge case: tab went hidden during the 1100ms mount delay, or the
+        // user closed the navbar before mount completed. Pause immediately
+        // in those cases — reconcile reads the live conditions.
+        reconcileSphereRunning();
+      } catch (err) {
+        // Placeholder remains visible — never blank the UI
+        console.warn("Sphere init failed, keeping placeholder", err);
+      } finally {
+        sphereLoading = false;
+      }
+    }
+
+    // Pause the sphere whenever the user steps away — driven by the global
+    // tracker in BaseLayout.astro (`axion:idle` / `axion:active`). Covers
+    // both tab-hidden AND foreground-but-idle (8s no input). Browsers only
+    // throttle rAF to ~1 Hz on hidden tabs and don't pause it at all when
+    // the tab is foreground-but-unfocused, so killing the loop ourselves
+    // is the only reliable saver. Cheap: no WebGL teardown, just rAF off.
+    document.addEventListener("axion:idle", reconcileSphereRunning);
+    document.addEventListener("axion:active", reconcileSphereRunning);
+
+    /* ─── Sphere "watches" cursor across the whole panel ────────────────
+       The sphere internally also listens to pointermove on its own canvas,
+       but that's a ~99px area — the user barely sees a reaction unless
+       hovering directly on the orb. While the menu is OPEN we widen the
+       watch area to the entire panel: any pointermove inside the panel
+       normalizes against the sphere's centre and feeds sphere.aim().
+       Only active when sphere is mounted and panel is open. Pointerleave
+       on the panel resets aim to (0,0) so the orb returns to centre. */
+    const sphereWatchHandler = (e: PointerEvent) => {
+      if (!sphere || panel.dataset.state !== "open" || !sphereContainer) return;
+      const sphereRect = sphereContainer.getBoundingClientRect();
+      const cx = sphereRect.left + sphereRect.width / 2;
+      const cy = sphereRect.top + sphereRect.height / 2;
+      const dx = e.clientX - cx;
+      const dy = e.clientY - cy;
+      /* Normalize by the panel half-extents so cursor in the panel
+         corners hits ±1 (full tilt). Capping at the panel boundary
+         keeps the response proportional to a sensible "reach". */
+      const panelRect = panel.getBoundingClientRect();
+      const nx = Math.max(-1, Math.min(1, dx / (panelRect.width / 2)));
+      const ny = Math.max(-1, Math.min(1, dy / (panelRect.height / 2)));
+      sphere.aim(nx, ny);
+    };
+    const sphereWatchLeave = () => {
+      sphere?.aim(0, 0);
+    };
+    panel.addEventListener("pointermove", sphereWatchHandler, { passive: true });
+    panel.addEventListener("pointerleave", sphereWatchLeave, { passive: true });
+
+    // ─── Click on pill — always toggles ───────────────────────────────
+    pill.addEventListener("click", () => {
+      setState(panel.dataset.state !== "open");
+    });
+
+    // ─── Top/bottom anchor button — label switches with scroll position
+    /* Per user spec: label "Up" when the user is near the first
+       section, "Down" when in the footer area, "Up" (default) in the
+       middle. Click always navigates to the OPPOSITE edge so the
+       button always takes the user somewhere useful:
+          near top    → label "Up",   click → bottom of page
+          near footer → label "Down", click → top of page
+          middle      → label "Up",   click → top
+       Thresholds = 30% of viewport from each edge. */
+    const scrollTopBtn = panel.querySelector<HTMLButtonElement>("[data-scroll-top]");
+    if (scrollTopBtn) {
+      const updateAnchorLabel = (): void => {
+        const scrollY = window.scrollY;
+        const vh = window.innerHeight;
+        const maxScroll = Math.max(0, document.documentElement.scrollHeight - vh);
+        const edge = vh * 0.3;
+        if (scrollY < edge) {
+          scrollTopBtn.textContent = "Up";
+          scrollTopBtn.dataset.scrollTarget = "bottom";
+        } else if (scrollY > maxScroll - edge) {
+          scrollTopBtn.textContent = "Down";
+          scrollTopBtn.dataset.scrollTarget = "top";
+        } else {
+          scrollTopBtn.textContent = "Up";
+          scrollTopBtn.dataset.scrollTarget = "top";
+        }
+      };
+
+      /* Initial sync + listen to scroll/resize. window's `scroll` event
+         covers both native AND Lenis (Lenis writes document.scrollTop
+         which fires the event). */
+      updateAnchorLabel();
+      window.addEventListener("scroll", updateAnchorLabel, { passive: true });
+      window.addEventListener("resize", updateAnchorLabel);
+
+      scrollTopBtn.addEventListener("click", () => {
+        const w = window as Window & {
+          __lenis?: { scrollTo: (target: number, opts?: object) => void };
+        };
+        const target =
+          scrollTopBtn.dataset.scrollTarget === "bottom"
+            ? document.documentElement.scrollHeight
+            : 0;
+        setState(false);
+        /* Defer the scroll one frame so the close animation has a
+           chance to start (avoids a visual collision where the closing
+           panel and the scrolling page move simultaneously). Falls
+           back to native scrollTo if Lenis isn't around (reduced-
+           motion path). */
+        window.setTimeout(() => {
+          if (w.__lenis) {
+            w.__lenis.scrollTo(target, { duration: 1.0 });
+          } else {
+            window.scrollTo({ top: target, behavior: "smooth" });
+          }
+        }, 50);
+      });
+    }
+
+    // ─── Desktop hover-to-open ────────────────────────────────────────
+    /* Safe zone is implemented in CSS via .navbar__panel::before — an
+       invisible 16px ring that's part of the panel's hit-test area.
+       mouseleave only fires once the cursor crosses the extended
+       boundary, so a single HOVER_OUT_DELAY is enough; no JS pointer
+       tracking, no dual-delay flicker on re-entry. */
+    if (isHoverDevice) {
+      panel.addEventListener("mouseenter", () => {
+        window.clearTimeout(hoverOutTimer);
+        setState(true);
+      });
+      panel.addEventListener("mouseleave", () => {
+        window.clearTimeout(hoverOutTimer);
+        hoverOutTimer = window.setTimeout(() => setState(false), HOVER_OUT_DELAY);
+      });
+    }
+
+    // ─── Escape closes ────────────────────────────────────────────────
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && panel.dataset.state === "open") {
+        setState(false);
+        pill.focus();
+      }
+    });
+
+    // ─── Click outside closes ─────────────────────────────────────────
+    document.addEventListener("click", (event) => {
+      if (panel.dataset.state !== "open") return;
+      if (!(event.target instanceof Node)) return;
+      if (!panel.contains(event.target)) setState(false);
+    });
+
+    // ─── Email — click copies to clipboard, swaps label to "Copied" ────
+    // Anchor preserves the mailto: fallback for no-JS / clipboard-blocked
+    // contexts; the click handler below upgrades the action to a copy.
+    const emailLink = panel.querySelector<HTMLAnchorElement>(".navbar__footer-email");
+    if (emailLink) {
+      let copiedTimer: number | undefined;
+      emailLink.addEventListener("click", (event) => {
+        // Must preventDefault SYNCHRONOUSLY, before any await — otherwise the
+        // browser races us and follows the mailto: href while we're still
+        // resolving the clipboard promise (event.preventDefault is a no-op
+        // once the event has been dispatched past the current task).
+        event.preventDefault();
+        const email = emailLink.dataset.email ?? "info@thedatum.ai";
+
+        const showCopied = () => {
+          emailLink.dataset.copied = "";
+          window.clearTimeout(copiedTimer);
+          copiedTimer = window.setTimeout(() => {
+            delete emailLink.dataset.copied;
+          }, 1500);
+        };
+
+        // Hard fallback for the (rare) case where both copy paths fail —
+        // surface mailto: so the user still has a way to reach the address.
+        const fallbackToMailto = () => {
+          window.location.href = `mailto:${email}`;
+        };
+
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(email).then(showCopied).catch(() => {
+            // Try the legacy execCommand path before giving up.
+            if (legacyCopy(email)) showCopied();
+            else fallbackToMailto();
+          });
+        } else if (legacyCopy(email)) {
+          showCopied();
+        } else {
+          fallbackToMailto();
+        }
+      });
+    }
+
+    // Legacy execCommand("copy") helper — used when clipboard API is missing
+    // (insecure context, older Safari) or blocked by permissions.
+    function legacyCopy(text: string): boolean {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    }
+
+    // ─── Chat — drives sphere state per the sphere2.0 demo loop ───────
+    if (chatInput && chatForm && chatSend && chatMessages) {
+      let busy = false;
+
+      const setBusy = (v: boolean) => {
+        busy = v;
+        chatSend.disabled = v;
+        chatInput.disabled = v;
+      };
+
+      const addMessage = (role: "user" | "bot", text: string) => {
+        const msg = document.createElement("p");
+        msg.className = `navbar__chat-msg navbar__chat-msg--${role}`;
+        msg.textContent = text;
+        chatMessages.appendChild(msg);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        return msg;
+      };
+
+      const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+      const streamMessage = async (role: "bot", text: string) => {
+        const msg = addMessage(role, "");
+        const words = text.split(" ");
+        const last = words.length - 1;
+        for (let i = 0; i < words.length; i++) {
+          msg.textContent += (i > 0 ? " " : "") + words[i];
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+          // Per-word brightness burst — orb visibly "speaks"
+          sphere?.speakPulse();
+          // Last 2 words: start easing the orb back toward normal
+          if (i === last - 1) sphere?.applyTargetParams("normal");
+          await sleep(70 + Math.random() * 110);
+        }
+      };
+
+      // Focus → listening; blur (empty) → normal
+      chatInput.addEventListener("focus", () => {
+        if (!busy) sphere?.setState("listening" satisfies SphereState);
+      });
+      chatInput.addEventListener("blur", () => {
+        if (!busy && !chatInput.value.trim()) sphere?.setState("normal");
+      });
+
+      chatForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const text = chatInput.value.trim();
+        if (!text || busy) return;
+        setBusy(true);
+        addMessage("user", text);
+        chatInput.value = "";
+
+        sphere?.setState("thinking");
+        // Shortened from the demo's 6.6–11.4s — feels right for nav-widget tempo
+        await sleep(1600 + Math.random() * 1200);
+
+        sphere?.setState("speaking");
+        await streamMessage("bot", pickResponse(text));
+
+        sphere?.setState("normal");
+        setBusy(false);
+      });
+
+      // Suggestion chips — clicking one drops it into the input as a prompt
+      chips.forEach((chip) => {
+        chip.addEventListener("click", () => {
+          const value = chip.dataset.chip ?? chip.textContent ?? "";
+          chatInput.value = value;
+          chatInput.focus();
+        });
+      });
+    }
+  }
+</script>

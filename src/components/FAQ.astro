@@ -1,0 +1,462 @@
+---
+/**
+ * FAQ.astro — FAQ section (Figma node 940:15041)
+ *
+ * Layout:
+ *   • 100svh pinned stage — section locks to the viewport via
+ *     ScrollTrigger.pin for one viewport of scroll. Content is
+ *     vertically centered inside the stage so it reads as a focused
+ *     "FAQ moment" before the page ends.
+ *   • Top-center "FAQ" pill — same recipe as About / Features / SPAR.
+ *   • Single centered column (max 45rem ≈ 720px) — questions stack
+ *     vertically, the active question's answer expands directly under
+ *     it (accordion style). Same on every viewport.
+ *
+ * Pin + snap (memory: feedback_hero_pin_breaks_about):
+ *   • Created SYNCHRONOUSLY in the script — same tick as About + SPAR
+ *     so all pins land before any layout cache is built.
+ *   • `invalidateOnRefresh: true` so the pin re-measures on viewport
+ *     changes (the section's grid centering depends on viewport size).
+ *   • NO `anticipatePin: 1` — per memory rule 4, stacked-pin pages
+ *     should not pre-measure (we're the 3rd pin behind About + SPAR).
+ *   • Snap is velocity-aware [0, 1] — a flick commits to the pin's
+ *     start or end in the scroll direction; a gentle nudge rounds to
+ *     the nearest. Mirrors SPAR's snap recipe minus the per-slide
+ *     calculus (FAQ has no internal slide progression — it's a
+ *     single resting state).
+ *
+ * Interaction:
+ *   - Click an inactive question → it becomes active (opacity 1, white).
+ *     Its answer expands beside (or under, on mobile) it.
+ *   - Click the active question → collapse. Every question dims back to
+ *     ghost opacity 0.2 and the answer track is empty.
+ *   - One active question at most. No "promoted heading" — the active
+ *     question stays in place in the list.
+ *
+ * Animation (synced to site motion tokens, CLAUDE.md rule #18 / #19):
+ *   - Question text — opacity 0.2 ↔ 1. Hover on inactive lifts to 0.55.
+ *   - Answer container — `grid-template-rows: 0fr ↔ 1fr` for smooth
+ *     height expand/collapse without max-height jitter.
+ *   - Answer text — `translateY(100%) ↔ translateY(0)` inside a mask
+ *     (`overflow: hidden`), so the answer slides down into view as the
+ *     row expands. The mask provides the clip, no opacity on the text.
+ *   - All three animations share `var(--dur-hover) var(--ease-out-soft)`
+ *     so the row reads as ONE coordinated state change.
+ */
+
+const questions = [
+  {
+    q: "What is a Decision Help System?",
+    a: "A system that doesn't just surface data — it closes the loop from signal to decision to action, with governance built in. Axion's SPAR framework is the operational model that makes this possible at institutional scale.",
+  },
+  {
+    q: "Autonomous or human-controlled?",
+    a: "Both, by design. Agents act autonomously inside policy bounds you set — and stop, defer, or escalate the moment a decision crosses one. Humans hold command of every action that matters.",
+  },
+  {
+    q: "Can run on sovereign infrastructure?",
+    a: "Yes. Axion deploys to on-prem, private cloud, or air-gapped environments. Data residency, key custody, and inference all stay inside your perimeter — nothing leaves unless you say so.",
+  },
+  {
+    q: "What data sources can it process?",
+    a: "Streaming sensor feeds, structured registries, geospatial layers, documents, and live operational signals. The discovery layer indexes everything; SPAR turns it into one continuous decision substrate.",
+  },
+  {
+    q: "What does a pilot timeline look like?",
+    a: "Four to eight weeks. We map a single decision loop end-to-end with your team — sense, predict, act, react — running on real data inside your environment. After that, scope expands from one loop to many.",
+  },
+];
+---
+
+<section class="faq" id="faq" aria-labelledby="faq-tag">
+  <div class="faq__inner">
+    <p class="faq__tag" id="faq-tag">FAQ</p>
+
+    <ol class="faq__list">
+      {
+        questions.map((item, i) => (
+          <li
+            class="faq__row"
+            data-index={i}
+            data-state={i === 0 ? "active" : "inactive"}
+          >
+            {/* Question = the clickable control. Standard accordion ARIA:
+                aria-expanded toggles per row, aria-controls points to the
+                answer panel. */}
+            <button
+              class="faq__question"
+              type="button"
+              id={`faq-question-${i}`}
+              aria-expanded={i === 0 ? "true" : "false"}
+              aria-controls={`faq-answer-${i}`}
+            >
+              {item.q}
+            </button>
+
+            {/* Answer wrap = the expand-collapse container. CSS animates
+                `grid-template-rows: 0fr ↔ 1fr` for smooth height. The
+                inner div is the mask (overflow hidden + min-block-size 0)
+                so the text inside can `translateY(100% → 0)` as a slide
+                without leaking outside the row. */}
+            <div
+              class="faq__answer-wrap"
+              id={`faq-answer-${i}`}
+              role="region"
+              aria-labelledby={`faq-question-${i}`}
+            >
+              <div class="faq__answer-inner">
+                <p class="faq__answer">{item.a}</p>
+              </div>
+            </div>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</section>
+
+<style>
+  /* ════════════════════════════════════════════════════════════
+     Section-local tokens — Figma node 940:15041.
+     Question text: 46px Geist Light, -1px tracking ≈ -0.022em.
+     Scales down fluidly to ~28px on mobile.
+     ════════════════════════════════════════════════════════════ */
+  .faq {
+    --faq-heading-size: clamp(1.75rem, 0.95rem + 2.8vw, 2.875rem);
+    --faq-heading-leading: 1.1;
+    --faq-heading-tracking: -0.022em;
+    /* List gap — Figma 32px between questions. Compact at mobile. */
+    --faq-list-gap: clamp(1.25rem, 1rem + 1vw, 2rem);
+  }
+
+  /* ───────────── Section frame ─────────────
+     100svh stage. Content is grid-centered (place-items: center) so the
+     pill and question list float in the middle of the viewport while
+     the section is pinned. No padding-block — the centering replaces
+     its purpose, and any block padding would push the section beyond
+     100svh (it would force pin to overshoot the viewport edge).
+     `overflow: hidden` clips edge cases where the active answer's
+     expand pushes the inner content beyond the section box. */
+  .faq {
+    position: relative;
+    background: var(--color-bg);
+    block-size: 100svh;
+    inline-size: 100%;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+  }
+
+  .faq__inner {
+    /* Full-width frame with global page-padding — same pattern Features
+       uses (NOT the global .container which caps at --content-max 1440px
+       and would create extra side-margins at viewports ≥ 1440px).
+       Capped at --frame-max (1728px = Figma frame) on ultrawide so the
+       padding stays where it belongs.
+       No align-items — pill self-aligns center; list stretches full
+       width (inline-size:100% below). */
+    inline-size: 100%;
+    max-inline-size: var(--frame-max);
+    margin-inline: auto;
+    padding-inline: var(--page-padding);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-section-title-gap);
+  }
+
+  /* "FAQ" pill — verbatim copy of .about__tag (site-wide section pill). */
+  .faq__tag {
+    align-self: center;
+    margin: 0;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: var(--text-xs);
+    line-height: 1.28;
+    color: var(--color-fg);
+    opacity: 0.7;
+    border: 1px solid var(--color-fg-faint);
+    border-radius: 999px;
+    padding-block: var(--pill-section-pad-block);
+    padding-inline: var(--pill-section-pad-inline);
+    inline-size: max-content;
+    text-box-trim: trim-both;
+    text-box-edge: cap alphabetic;
+  }
+
+  /* ───────────── List ─────────────
+     Centered single-column reading width — wide enough that the 46px
+     question fits on one line at desktop, narrow enough that the body
+     answers stay at a comfortable line length (~70-80 chars). Falls back
+     to 100% width on viewports narrower than 45rem (mobile). */
+  .faq__list {
+    inline-size: 100%;
+    max-inline-size: 45rem;
+    margin-inline: auto;
+    list-style: none;
+    margin-block: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--faq-list-gap);
+  }
+
+  /* ───────────── Row ─────────────
+     Single-column grid: question on top, answer below. The
+     `grid-template-areas` keeps named slots so the question/answer can
+     target their cells declaratively (and so the same names still work
+     under the answer-wrap height animation). */
+  .faq__row {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "question"
+      "answer";
+    align-items: start;
+  }
+
+  /* ───────────── Question (clickable) ───────────── */
+  .faq__question {
+    grid-area: question;
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    text-align: center;
+    cursor: pointer;
+    inline-size: 100%;
+    display: block;
+    font-family: var(--font-display);
+    font-weight: 300;
+    font-size: var(--faq-heading-size);
+    line-height: var(--faq-heading-leading);
+    letter-spacing: var(--faq-heading-tracking);
+    color: var(--color-fg);
+    /* Ghost by default — opacity 0.2 reads as "available, dimmed". */
+    opacity: 0.2;
+    transition: opacity var(--dur-hover) var(--ease-out-soft);
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  /* Active question is white — full opacity. */
+  .faq__row[data-state="active"] .faq__question {
+    opacity: 1;
+  }
+
+  @media (hover: hover) {
+    .faq__row[data-state="inactive"] .faq__question:hover {
+      /* Mid-tone hint that this row is interactive. */
+      opacity: 0.55;
+    }
+  }
+
+  /* ───────────── Answer wrap — animated height container ─────────────
+     CSS Grid expand trick: animating `grid-template-rows` from `0fr` to
+     `1fr` smoothly resolves an auto-sized child's height without needing
+     max-height tricks. Modern browsers handle this natively. */
+  .faq__answer-wrap {
+    grid-area: answer;
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--dur-hover) var(--ease-out-soft);
+    inline-size: 100%;
+    /* Width is governed by the parent's grid track (624fr) — no
+       max-inline-size override needed. */
+  }
+
+  .faq__row[data-state="active"] .faq__answer-wrap {
+    grid-template-rows: 1fr;
+  }
+
+  /* Inner = the mask. `min-block-size: 0` is required so the child can
+     shrink to zero inside the grid track; `overflow: hidden` clips the
+     translated text while the row collapses or expands. No padding here
+     — any padding-block on the inner would survive `grid-template-rows:
+     0fr` (the grid track is 0 but the inner's own padding box would
+     still contribute height to the wrap), leaving a dead band under
+     every inactive question. The breathing space lives on the answer
+     text itself (padding-block-start), so it gets translated + clipped
+     together with the text. */
+  .faq__answer-inner {
+    min-block-size: 0;
+    overflow: hidden;
+  }
+
+  .faq__answer {
+    /* Figma narrows the answer to 554px so the body copy reads as a
+       quieter sub-line below the question. Centered within the column. */
+    margin-block: 0;
+    margin-inline: auto;
+    inline-size: 100%;
+    max-inline-size: 34.625rem; /* Figma 554px */
+    /* Breathing space between the question and the answer text (top)
+       and between the answer and the next inactive question (bottom).
+       Both live on the text (not the mask) so they get swallowed by
+       the clip while the row is collapsed.
+       Bottom padding (48 at desktop) + row-gap (32) = 80px gap between
+       the answer bottom and the next question — matches Figma. */
+    padding-block-start: var(--space-xs);
+    padding-block-end: var(--space-lg);
+    font-family: var(--font-body);
+    font-size: var(--text-sm); /* Figma 15px */
+    line-height: 1.6; /* Figma 24px / 15px */
+    color: var(--color-fg-muted);
+    text-align: center;
+    /* Default = parked below the mask. The row expand pulls the wrap
+       open while the text slides up into view; both finish together. */
+    transform: translateY(100%);
+    transition: transform var(--dur-hover) var(--ease-out-soft);
+  }
+
+  .faq__row[data-state="active"] .faq__answer {
+    transform: translateY(0);
+  }
+
+  /* ───────────── Reduced motion ───────────── */
+  @media (prefers-reduced-motion: reduce) {
+    .faq__question,
+    .faq__answer-wrap,
+    .faq__answer {
+      transition: none;
+    }
+  }
+
+  /* No mobile @media override needed — the layout is the same single
+     column at every viewport. The list's max-inline-size + inline-size:
+     100% naturally falls back to viewport-width-minus-padding on narrow
+     screens. */
+</style>
+
+<script>
+  /* FAQ — single-open accordion state machine + 100svh pin with snap.
+
+     State machine:
+       activeIndex ∈ [0..total-1] | null. Click toggles state:
+         - Click on an inactive question → that row becomes active.
+         - Click on the active question → collapse.
+       Hover on a question (fine-pointer devices) activates it without
+       a click.
+
+     Pin (ScrollTrigger):
+       Pattern follows About / SPAR — created synchronously so all pins
+       on the page register in the same tick (memory:
+       feedback_hero_pin_breaks_about). `invalidateOnRefresh: true`
+       re-measures on viewport changes. NO `anticipatePin: 1` per memory
+       rule 4 — we're a downstream pin and pre-measurement catches
+       transient layout states.
+
+     Snap:
+       Velocity-aware [0, 1] — a flick in either scroll direction commits
+       to that pin end; a gentle nudge rounds to the nearest. Mirrors
+       SPAR's snap recipe without the per-slide calculus (FAQ has no
+       internal slide progression). Disabled under
+       `prefers-reduced-motion: reduce`. */
+
+  import gsap from "gsap";
+  import { ScrollTrigger } from "gsap/ScrollTrigger";
+  import { ensureLenisBridge } from "../lib/scrollBridge";
+
+  gsap.registerPlugin(ScrollTrigger);
+  ensureLenisBridge(ScrollTrigger);
+
+  const reduceMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)"
+  ).matches;
+
+  const section = document.querySelector<HTMLElement>(".faq");
+  if (section) {
+    const rows = Array.from(
+      section.querySelectorAll<HTMLElement>(".faq__row")
+    );
+    const questions = Array.from(
+      section.querySelectorAll<HTMLButtonElement>(".faq__question")
+    );
+
+    let activeIndex: number | null = 0;
+
+    const apply = () => {
+      rows.forEach((r, i) => {
+        r.dataset.state = activeIndex === i ? "active" : "inactive";
+      });
+      questions.forEach((q, i) => {
+        q.setAttribute(
+          "aria-expanded",
+          activeIndex === i ? "true" : "false"
+        );
+      });
+    };
+
+    questions.forEach((q, i) => {
+      q.addEventListener("click", () => {
+        // Click on the currently-active question collapses; click on any
+        // other question switches to it.
+        activeIndex = activeIndex === i ? null : i;
+        apply();
+      });
+    });
+
+    /* Hover-to-open on fine-pointer (mouse) devices. Cheap discovery on
+       desktop: moving the cursor across a question opens it without
+       requiring a click. Touch and keyboard fall back to the click
+       handler above — `(hover: hover) and (pointer: fine)` is false on
+       touch-only devices, so this listener is skipped there.
+
+       Bound to the question button (not the row) so moving the cursor
+       down to read the answer text below doesn't re-trigger anything
+       and doesn't fight with the row-height animation. Mouse leaving
+       the section leaves whatever was last open still open — only
+       hovering a DIFFERENT question switches the active state.
+
+       Click still toggles (so clicking the currently-open question
+       collapses it), keeping the explicit close affordance from the
+       previous behavior. */
+    const isFinePointer = window.matchMedia(
+      "(hover: hover) and (pointer: fine)"
+    ).matches;
+
+    if (isFinePointer) {
+      questions.forEach((q, i) => {
+        q.addEventListener("mouseenter", () => {
+          if (activeIndex !== i) {
+            activeIndex = i;
+            apply();
+          }
+        });
+      });
+    }
+
+    apply();
+
+    /* ─────────── Pin + snap ───────────
+       100svh stage locked to the viewport for one extra viewport of
+       scroll. Snap commits to start (0) or end (1) of the pin range
+       based on scroll velocity — a flick goes through, a gentle nudge
+       holds. Pin is created synchronously so it lands in the same tick
+       as About + SPAR (memory: feedback_hero_pin_breaks_about). */
+    ScrollTrigger.create({
+      trigger: section,
+      pin: true,
+      pinSpacing: true,
+      start: "top top",
+      end: "+=100%",
+      invalidateOnRefresh: true,
+      snap: reduceMotion
+        ? undefined
+        : {
+            snapTo: (value, self) => {
+              const velocity = self?.getVelocity?.() ?? 0;
+              // Same threshold About / SPAR use — gentle nudge rounds
+              // to nearest pin end, anything past ±50px/s commits in
+              // the scroll direction.
+              if (Math.abs(velocity) > 50) {
+                return velocity > 0 ? 1 : 0;
+              }
+              return value < 0.5 ? 0 : 1;
+            },
+            duration: { min: 0.2, max: 0.5 },
+            delay: 0.08,
+            ease: "power3.out",
+          },
+    });
+  }
+</script>

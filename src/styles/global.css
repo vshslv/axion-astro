@@ -1,0 +1,347 @@
+@import "tailwindcss";
+
+@import "@fontsource-variable/geist";
+
+/* ---------- Design tokens (Tailwind v4 @theme) ---------- */
+@theme {
+  /* ---------- Color tokens ---------- */
+  --color-bg: #010101;
+  --color-bg-soft: #0a0a0a;
+
+  --color-fg: #ffffff;
+  --color-fg-muted: rgba(255, 255, 255, 0.7);
+  --color-fg-faint: rgba(255, 255, 255, 0.2);
+  --color-fg-ghost: rgba(255, 255, 255, 0.1);
+
+  --color-glass: rgba(255, 255, 255, 0.1);
+  --color-glass-dark: rgba(0, 0, 0, 0.31);
+
+  /* ---------- Typography ---------- */
+  --font-display: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-ui: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+
+  /* Fluid type scale — clamp(min, base + Xvw, max) */
+  /* Fixed sub-xs — for tiny UI labels (e.g. Navbar chat status text).
+     Not fluid because fluid would dip below readability on mobile. */
+  --text-2xs: 0.5625rem; /* 9px */
+  --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
+  --text-sm: clamp(0.875rem, 0.825rem + 0.25vw, 1rem);
+  --text-base: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+  --text-lg: clamp(1.25rem, 1.15rem + 0.5vw, 1.5rem);
+  --text-xl: clamp(1.5rem, 1.3rem + 1vw, 2rem);
+  --text-2xl: clamp(2rem, 1.6rem + 2vw, 3rem);
+  --text-3xl: clamp(3rem, 2.4rem + 3vw, 4.5rem);
+  /* Axion override: hero headline. Matches Figma: 80px at 440w mobile, 180px at 1728w desktop.
+     Slope tuned so clamp hits both endpoints accurately. */
+  --text-display: clamp(5rem, 2.875rem + 7.75vw, 11.25rem);
+
+  --leading-tight: 1.1;
+  --leading-snug: 1.3;
+  --leading-normal: 1.5;
+
+  /* ---------- Motion system ----------
+     Two canonical curves + a shared hover duration. The whole site reads
+     mechanically consistent because every micro-interaction (hover scale,
+     lift, mask text swap) uses the SAME easing AND duration.
+
+     Curve character — out-quart: soft entry, snappy mid, gentle landing.
+     User-perceived "fast but expensive feel". */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1); /* hover micro-interactions, mask swaps */
+  --ease-morph: cubic-bezier(0.32, 0.72, 0, 1); /* large transitions (modal FLIP) */
+
+  --dur-hover: 0.5s; /* hover scale / lift / mask swap — all sync to this */
+  --dur-morph: 0.7s; /* modal morph in, view transitions */
+  --dur-morph-fast: 0.38s; /* morph out (snappier than morph in by design) */
+
+  /* ---------- Spacing scale — fluid clamp(min, base + Xvw, max) ---------- */
+  --space-3xs: clamp(0.25rem, 0.2rem + 0.25vw, 0.375rem);
+  --space-2xs: clamp(0.5rem, 0.4rem + 0.5vw, 0.75rem);
+  --space-xs: clamp(0.75rem, 0.6rem + 0.75vw, 1rem);
+  --space-sm: clamp(1rem, 0.8rem + 1vw, 1.5rem);
+  --space-md: clamp(1.5rem, 1.2rem + 1.5vw, 2.25rem);
+  --space-lg: clamp(2rem, 1.6rem + 2vw, 3rem);
+  --space-xl: clamp(3rem, 2.4rem + 3vw, 4.5rem);
+  --space-2xl: clamp(4rem, 3.2rem + 4vw, 6rem);
+  --space-3xl: clamp(6rem, 4.8rem + 6vw, 9rem);
+
+  /* Two vertical spacing scales for the editorial rhythm of
+     fullscreen-anchored sections. Both fluid, both with a min floor
+     (mobile) and a hard max (ultra-wide) so the layout never feels
+     cramped OR like an empty wasteland. Target values picked from
+     the Figma macro:
+
+     --space-section-title-gap (target 120px) — gap WITHIN a section,
+       directly below the small label pill (e.g. "About" / "Features")
+       before the first content block (description, card stack, etc.).
+       Hits 120px at ~1440 viewport, scales down to 80px on mobile,
+       stays at 120 on ultra-wide.
+
+     --space-section-divider (target 180px) — gap BETWEEN sections,
+       from the content end of one section to the next section's
+       label pill. Hits 180px at ~1440, scales down to 120 on mobile,
+       stays at 180 on ultra-wide. Applied as `padding-block-start`
+       on the leading section so each section owns its own lead-in. */
+  --space-section-title-gap: clamp(5rem, 8.3vw, 7.5rem);
+  --space-section-divider: clamp(7.5rem, 12.5vw, 11.25rem);
+
+  /* ---------- Page gutters + content widths ---------- */
+  /* Axion's editorial layout uses larger horizontal gutters than the default
+     conventions (16–120px). Generic --content-max from conventions. */
+  --page-padding: clamp(1rem, 7vw, 7.5rem);
+  --content-max: 90rem; /* 1440px */
+  --content-narrow: 48rem; /* 768px */
+  --frame-max: 108rem; /* 1728px — Figma frame width, for full-bleed hero */
+
+  /* ---------- Radii ---------- */
+  /* Generic */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 1rem;
+  /* Axion-specific (rounded to clean rem) */
+  --radius-pill: 1.875rem; /* 30px */
+  --radius-panel: 2.125rem; /* 34px */
+  --radius-tile: 1.25rem; /* 20px */
+
+  /* ---------- Section label pill (About / Features / SPAR / FAQ tag) ----------
+     Shared recipe across all editorial section tags. Padding-block is
+     asymmetric (7px top / 8px bottom) for optical centering of the display
+     font's tall ascenders. Single source of truth — if the spec changes,
+     all four section tags pick it up. */
+  --pill-section-pad-block: 0.4375rem 0.5rem;
+  --pill-section-pad-inline: 0.625rem;
+}
+
+/* ---------- Base ---------- */
+/* Root font-size scaling. Below 1728px (Figma frame width / design baseline)
+   the root stays at the browser default (typically 16px, but `1em` respects
+   user accessibility prefs — if a reader bumped their default to 20px we
+   honour it). Above 1728px the root scales LINEARLY with viewport width
+   (100vw / 108 ≈ 1px per 1.08vw → at 1728px = 16px, at 3456px = 32px), so
+   every rem-based dimension in the codebase grows 1:1 with the screen.
+   The 2.25em cap stops scaling around ~5K-class displays so cinema panels
+   don't end up with absurdly oversized chrome. Everything in the liquid
+   recipe (navbar pill, hero CTA, play button) is rem-based, so this single
+   rule scales the whole liquid system at once. */
+:root {
+  font-size: clamp(1em, 100vw / 108, 2.25em);
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  /* `clip` instead of `hidden`: both prevent horizontal overflow, but
+     `hidden` creates a new scroll container which in Safari (≤ 16-ish)
+     silently breaks `position: sticky` on every descendant — the About
+     gallery's pinned stage would un-pin and the horizontal sweep would
+     fail. `overflow-x: clip` clips without establishing a scroll
+     container, so sticky still resolves against the viewport. */
+  overflow-x: clip;
+}
+
+/* Hide the native vertical scrollbar site-wide. Reason: pinned sections
+   (About, Features, SPAR) add 100s of % of scroll distance via their
+   pin spacers — without a visible scrollbar this is invisible to the
+   user. With the native scrollbar, the handle position implies
+   "there's much more content below" while the viewport just shows a
+   pinned section, which reads as broken. Lenis drives the actual scroll
+   smoothness; keyboard / wheel / trackpad input all still work.
+   Accessibility: keyboard users can still scroll via arrow keys / page
+   down / space; we just don't draw the visual indicator. */
+html {
+  scrollbar-width: none; /* Firefox */
+}
+html::-webkit-scrollbar {
+  display: none; /* WebKit (Chrome / Safari / Edge) */
+}
+
+/* Default focus ring — every interactive element inherits this unless overridden */
+:where(a, button, [role="button"], input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-fg);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* ---------- Layout helpers ---------- */
+.container {
+  inline-size: 100%;
+  max-inline-size: var(--content-max);
+  margin-inline: auto;
+  padding-inline: var(--page-padding);
+}
+
+.container--narrow {
+  max-inline-size: var(--content-narrow);
+}
+
+/* ---------- Display headline helpers ---------- */
+.display-headline {
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  line-height: 0.83;
+  letter-spacing: -0.055em;
+  font-weight: 400;
+}
+
+.display-ghost {
+  color: var(--color-fg-ghost);
+}
+
+/* Canonical glass surface — 27.5px backdrop blur per Axion brand */
+.glass {
+  background: var(--color-glass);
+  backdrop-filter: blur(27.5px);
+  -webkit-backdrop-filter: blur(27.5px);
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   LIQUID GLASS — 4-layer recipe (filter → overlay → specular → content)
+   Used by the hero CTA, hero play button, and navbar pill.
+
+   How it works:
+   - .liquid__filter captures the backdrop with `backdrop-filter: url(#lg-dist)`
+     where #lg-dist is an SVG turbulence + displacement filter (defs live in
+     Header.astro). Result: a subtle liquid distortion of whatever sits behind.
+   - .liquid__overlay tints the surface (`--lg-tint`) and brightens on hover.
+   - .liquid__specular paints the rim hairlines (top highlight + bottom
+     counter-reflection + inset border) ABOVE the displacement so they aren't
+     smeared by the SVG filter.
+   - .liquid__content holds the actual button content (label, icon).
+
+   Reference: https://kube.io/blog/liquid-glass-css-svg/
+   The SVG filter defs `#lg-dist` and `#lg-dist-sm` are defined inside
+   Header.astro and shared across all .liquid surfaces on the page.
+   ──────────────────────────────────────────────────────────────────── */
+.liquid {
+  --lg-tint: rgba(255, 255, 255, 0.1);
+  --lg-tint-hover: rgba(255, 255, 255, 0.2);
+  --lg-highlight: rgba(255, 255, 255, 0.45);
+  --lg-border: rgba(255, 255, 255, 0.1);
+  position: relative;
+  /* Defence-in-depth clip: most .liquid hosts already clip via their own
+     overflow + border-radius (pills, cards), but if a future host doesn't,
+     the SVG-displaced backdrop must still be contained or it spills past
+     the host's edge against the dark page surface. */
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.liquid__filter {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  /* Direct SVG filter as backdrop-filter — operates on the backdrop image
+     (SourceGraphic = captured backdrop), not the element's own paint. */
+  backdrop-filter: url(#lg-dist);
+  -webkit-backdrop-filter: url(#lg-dist);
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.liquid--sm .liquid__filter {
+  backdrop-filter: url(#lg-dist-sm);
+  -webkit-backdrop-filter: url(#lg-dist-sm);
+}
+
+.liquid__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: var(--lg-tint);
+  /* 0.22s micro-feedback — below the 0.2s prefers-reduced-motion threshold. */
+  transition: background 0.22s ease;
+}
+
+.liquid:hover .liquid__overlay {
+  background: var(--lg-tint-hover);
+}
+
+.liquid__specular {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  /* Rim hairlines in rem so they grow proportionally on 4K. At design
+     baseline (16px root) these resolve to 1.5px / 0.5px / 1px exactly. */
+  box-shadow:
+    inset 0 0.0938rem 0.0938rem -0.0313rem rgba(255, 255, 255, 0.4),
+    inset 0 -0.0938rem 0.0938rem -0.0313rem rgba(255, 255, 255, 0.18),
+    inset 0 0 0 0.0625rem var(--lg-border);
+}
+
+.liquid__content {
+  position: relative;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 100%;
+  block-size: 100%;
+  color: var(--color-fg);
+  text-decoration: none;
+  /* Button convention: text non-selectable, link-drag disabled (for <a>-as-button). */
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* ---------- Skeleton loading state (site-wide convention) ----------
+   B&W shimmer for any loading placeholder. Apply `.skeleton` to a block-level
+   element that holds the eventual content's bounding box. Image fades in over
+   it once `.decode()` resolves (see Header.astro for the pattern).
+   Rationale: skeletons are always grayscale across the site — they read as
+   "loading" without competing visually with brand colors. */
+.skeleton {
+  background: linear-gradient(
+      110deg,
+      rgba(255, 255, 255, 0.04) 25%,
+      rgba(255, 255, 255, 0.12) 50%,
+      rgba(255, 255, 255, 0.04) 75%
+    ), rgba(255, 255, 255, 0.03);
+  background-size: 200% 100%, auto;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0, 0 0;
+  }
+  100% {
+    background-position: -200% 0, 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* ---------- Idle CPU saver -------------------------------------------
+   When the global idle tracker (BaseLayout.astro) decides the user has
+   stepped away (8s without input or tab in the background), it puts
+   `data-idle` on <html>. We pause every infinite CSS animation on the
+   page with one rule. Browsers don't auto-pause CSS keyframes on
+   non-foreground tabs the way they pause video — they just throttle to
+   1 Hz, which still costs style/composite work each tick. Making this
+   explicit kills the cost flat, and resumes the moment activity returns.
+   Property is non-inherited; the universal selector hits every element
+   so component-local animations (skeleton shimmer, sphere placeholder
+   breath, hero LQIP pulse) all freeze together. */
+:root[data-idle] *,
+:root[data-idle] *::before,
+:root[data-idle] *::after {
+  animation-play-state: paused !important;
+  /* why: blanket CPU/GPU saver — no exceptions are needed; nothing on the
+     page should keep dancing while the user isn't watching. */
+}

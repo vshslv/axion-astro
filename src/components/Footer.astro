@@ -1,0 +1,777 @@
+---
+/**
+ * Footer.astro — site footer (Figma node 979:1008)
+ *
+ * A full-viewport "bookend" of the hero: the same editorial split-headline
+ * (Agentic decision / ghost Intelligence) over a looping video background,
+ * with footer chrome layered into a 3×3 grid —
+ *   • top:    section nav (left) · "Axion" pill (center) · tagline (right)
+ *   • middle: the giant decorative title block (centered)
+ *   • bottom: year (left) · legal links (right)
+ *
+ * Reuse notes (per "base it on the hero / reuse the site's solutions"):
+ *   • Title block mirrors Header's `.hero__title*` recipe (same tokens, same
+ *     Intelligence SVG). Rendered decorative (aria-hidden) because it repeats
+ *     the hero's <h1> — AT shouldn't hear the headline twice.
+ *   • Background mirrors Header `.hero__bg` + Features' decode gating:
+ *     LQIP → poster (decode reveal) → looping video (IntersectionObserver
+ *     play/pause + `axion:idle` fade-then-pause). Save-Data / 2g /
+ *     reduced-motion drop the video and keep the poster as the final frame.
+ *   • "Axion" pill reuses the section-tag recipe (.about__tag) and acts as a
+ *     scroll-to-top button (Lenis), with the standard button hard-mask hover.
+ *   • Nav + legal link groups reuse the navbar's neighbour-fade-blur hover.
+ *   • Magnetic scroll-snap mirrors SPAR's velocity-aware snap recipe.
+ *
+ * Assets (in public/bg/):
+ *   footer-bg-poster.jpg  — mid-frame still of the loop; first-paint poster +
+ *                           reduced-motion / Save-Data final frame.
+ *   footer-bg-hevc.mp4 (HEVC, 2.4MB) + footer-bg.webm (VP9, 2.6MB) — a
+ *     ping-pong (forward+reverse) loop re-encoded from Upscale_Video (2)-5.mp4
+ *     (3528×2352 → 1920w, ≤2Mbps, audio stripped) so it cycles seamlessly.
+ *
+ * Copy note: Figma's footer title reads "Agentic desicion" (typo). Kept
+ * consistent with the already-shipped hero, which renders "decision".
+ *
+ * Legal links point at routes that don't exist yet — TODO: wire to real pages.
+ */
+import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
+
+// 2nd inline copy of the Intelligence SVG on the page (the hero has the 1st).
+// Its 24 internal clip-path ids all share the `bgblur_` prefix and are
+// referenced only via url(#…); suffixing that prefix yields a fully
+// self-consistent copy with unique ids — no collision, identical rendering.
+const footerIntelligence = intelligenceSVG.replace(/bgblur_/g, "bgblur_ftr_");
+
+const navLinks = [
+  { label: "About", href: "#about" },
+  { label: "Features", href: "#features" },
+  { label: "SPAR Framework", href: "#spar" },
+  { label: "FAQ", href: "#faq" },
+];
+
+// TODO: these legal routes don't exist yet — point at real pages once they land.
+const legalLinks = [
+  { label: "Cookie Policy", href: "/cookie-policy" },
+  { label: "Legal Disclaimer", href: "/legal-disclaimer" },
+  { label: "Privacy Policy", href: "/privacy-policy" },
+  { label: "Terms and Conditions", href: "/terms-and-conditions" },
+];
+---
+
+<footer class="footer">
+  {/* ── Background — LQIP → poster (decode reveal) → looping video → vignette.
+       Decorative full-bleed overlay; mirrors .hero__bg. The position:absolute
+       layers are decorative overlays (rule #8 allowlist, approved), not
+       content placement — all content below is grid/flex. */}
+  <div class="footer__bg" aria-hidden="true">
+    <div class="footer__bg-lqip"></div>
+    <img
+      class="footer__bg-poster"
+      src="/bg/footer-bg-poster.jpg"
+      alt=""
+      loading="lazy"
+      decoding="async"
+    />
+    {/* Ping-pong (forward+reverse) background loop, re-encoded down from
+        Upscale_Video (2)-5.mp4 to the ≤2Mbps loop budget. Dual-ship HEVC +
+        WebM; decode-gated by IntersectionObserver + paused on `axion:idle`.
+        Dropped on Save-Data / 2g / reduced-motion — the poster stays. */}
+    <video
+      class="footer__bg-video"
+      muted
+      loop
+      playsinline
+      preload="metadata"
+      poster="/bg/footer-bg-poster.jpg"
+    >
+      <source src="/bg/footer-bg-hevc.mp4" type="video/mp4; codecs=hvc1" />
+      <source src="/bg/footer-bg.webm" type="video/webm" />
+    </video>
+    <div class="footer__bg-vignette"></div>
+  </div>
+
+  {/* ── Top-left — section nav. Neighbour-fade-blur group hover (reused from
+       .navbar__links): hovering one recedes the others. */}
+  <nav class="footer__nav" aria-label="Footer">
+    {navLinks.map((link) => (
+      <a class="footer__nav-link" href={link.href}>{link.label}</a>
+    ))}
+  </nav>
+
+  {/* ── Top-center — "Axion" pill = scroll-to-top button (Lenis).
+       Section-tag pill recipe + standard button hard-mask hover (same text
+       duplicated; aria-hidden on the dup so AT reads it once). */}
+  <button class="footer__badge" type="button" aria-label="Back to top">
+    <span class="footer__badge-label">
+      <span class="footer__badge-text" data-text="default">Axion</span>
+      <span class="footer__badge-text" data-text="hover" aria-hidden="true">Axion</span>
+    </span>
+  </button>
+
+  {/* ── Top-right — brand tagline. */}
+  <p class="footer__tagline">The decision infrastructure for the cities of tomorrow.</p>
+
+  {/* ── Center — decorative split headline; bookends the hero <h1>.
+       aria-hidden: repeats the hero headline, so AT shouldn't read it twice. */}
+  <div class="footer__title-block" aria-hidden="true">
+    <p class="footer__title">
+      <span class="footer__title-line-1"
+        ><span class="footer__title-word">Agentic</span> <span
+          class="footer__title-word footer__title-word--offset">decision</span
+        ></span
+      >
+      <span class="footer__title-line-2" set:html={footerIntelligence} />
+    </p>
+    <p class="footer__subtitle">The decision infrastructure for the cities of tomorrow</p>
+  </div>
+
+  {/* ── Bottom — year (left) + legal links (right, neighbour-fade-blur). */}
+  <div class="footer__meta">
+    <p class="footer__year">2026</p>
+    <nav class="footer__legal" aria-label="Legal">
+      {legalLinks.map((link) => (
+        <a class="footer__legal-link" href={link.href}>{link.label}</a>
+      ))}
+    </nav>
+  </div>
+</footer>
+
+<style>
+  /* =================================================================
+     FOOTER — full-viewport bookend of the hero. 3×3 grid:
+       top:  nav (left) · badge (center) · tagline (right)
+       mid:  decorative title (centered)
+       bot:  year (left) · legal (right)
+     Background layers are position:absolute decorative overlays
+     (rule #8 allowlist, approved). All content placement is grid/flex.
+     ================================================================= */
+  .footer {
+    position: relative;
+    inline-size: 100%;
+    min-block-size: 100svh;
+    overflow: hidden;
+    isolation: isolate;
+    background-color: var(--color-bg);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    /* Equal 1fr top/bottom rows frame-center the title's own (auto) row
+       between the top chrome and the bottom meta — matches the hero/Figma
+       centered headline, and giving the title its own row means it never
+       collides with the taller nav (which lives entirely in row 1). */
+    grid-template-rows: 1fr auto 1fr;
+    grid-template-areas:
+      "nav   badge tagline"
+      "title title title"
+      "meta  meta  meta";
+    column-gap: var(--space-md);
+    /* No block padding: the title row centres on the FULL frame (Figma puts
+       the headline at 50%), independent of the asymmetric chrome insets
+       (120px top, small bottom) which live on the chrome items themselves. */
+    padding-inline: var(--page-padding);
+  }
+
+  /* Top chrome (nav / badge / tagline) — pinned to the top of row 1 with the
+     ≈120px Figma top inset. */
+  .footer__nav,
+  .footer__badge,
+  .footer__tagline {
+    align-self: start;
+    /* Top inset + reset any UA margin (the button / <p>) in one declaration. */
+    margin: var(--space-section-title-gap) 0 0;
+  }
+  /* Bottom meta — pinned hard to the bottom edge (Figma ≈10px gutter). */
+  .footer__meta {
+    align-self: end;
+    margin-block-end: var(--space-2xs);
+  }
+
+  /* Foreground content sits above the background. Grid items honour z-index
+     without needing `position` (CSS Grid §z-axis). */
+  .footer__nav,
+  .footer__badge,
+  .footer__tagline,
+  .footer__title-block,
+  .footer__meta {
+    z-index: 1;
+  }
+
+  /* =================================================================
+     BACKGROUND STACK (decorative) — mirrors .hero__bg.
+     ================================================================= */
+  .footer__bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+  }
+
+  /* LQIP — instant base64 preview, blurred + grayscale (B&W skeleton
+     convention), pulsing until the poster decodes. */
+  .footer__bg-lqip {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-color: var(--color-bg);
+    background-image: url("data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYyLjI4LjEwMQD/2wBDAAgODhAOEBMTExMTExYVFhcXFxYWFhYXFxcZGRkdHR0ZGRkXFxkZHBwdHSAhIB4eHR4hISMjIyoqKCgxMTI8PEj/xABiAAACAwEAAAAAAAAAAAAAAAADBAIFBwYBAQEAAAAAAAAAAAAAAAAAAAMCEAABBAEDBQEBAAAAAAAAAAABAgMRABIhMQQFE7GRgUFxEQEBAQEAAAAAAAAAAAAAAAAAEQIB/8AAEQgAEAAYAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AxFtQJhLbY/oy8k2/c6byOwH8BhMaISPy8klRTqK+vmPuNhsuKxBnHIx6mtzQ4SVoYIFH8siqd96OnVP/2Q==");
+    background-size: cover;
+    background-position: center;
+    filter: grayscale(1) blur(28px);
+    transform: scale(1.08);
+    animation: footer-bg-pulse 2s ease-in-out infinite;
+  }
+  .footer__bg[data-poster-ready] .footer__bg-lqip,
+  .footer__bg[data-video-ready] .footer__bg-lqip {
+    animation: none;
+  }
+
+  /* Full-resolution poster — hidden until decoded, then fades in over the
+     LQIP. Stays behind the video so transitions never flash; on
+     reduced-motion / Save-Data it's the final frame. */
+  .footer__bg-poster {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    object-position: center;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.6s ease-out;
+  }
+  .footer__bg[data-poster-ready] .footer__bg-poster {
+    opacity: 1;
+  }
+
+  /* Ping-pong background loop — fades in on `canplaythrough`; dropped entirely
+     on Save-Data / 2g / reduced-motion (poster stays as the final frame). */
+  .footer__bg-video {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    object-position: center;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.8s ease-out;
+  }
+  .footer__bg[data-video-ready] .footer__bg-video {
+    opacity: 1;
+  }
+  /* Idle: fade the video out before the script pauses it (hides the freeze). */
+  .footer__bg[data-video-idle] .footer__bg-video {
+    opacity: 0;
+  }
+
+  .footer__bg-vignette {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    /* Mirror of the hero vignette: rounded-corner radial fade to bg + a
+       top/bottom scrim. Heavier at the very bottom so the fine-print legal
+       row + year stay legible over the brightest part of the loop. */
+    background:
+      radial-gradient(
+        ellipse 75% 90% at 50% 50%,
+        transparent 55%,
+        rgba(1, 1, 1, 0.55) 100%
+      ),
+      linear-gradient(
+        to bottom,
+        rgba(1, 1, 1, 0.55) 0%,
+        rgba(1, 1, 1, 0.2) 16%,
+        transparent 42%,
+        transparent 55%,
+        rgba(1, 1, 1, 0.55) 82%,
+        rgba(1, 1, 1, 0.92) 96%,
+        var(--color-bg) 100%
+      );
+    pointer-events: none;
+  }
+
+  @keyframes footer-bg-pulse {
+    0%, 100% { opacity: 0.7; }
+    50%      { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .footer__bg-lqip {
+      animation: none;
+    }
+  }
+
+  /* =================================================================
+     TOP-LEFT — section nav (editorial large links)
+     ================================================================= */
+  .footer__nav {
+    grid-area: nav;
+    justify-self: start;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm); /* ≈20px (Figma) */
+    /* Fluid headline-scale links — tops out at 2.875rem (46px, Figma). */
+    --footer-nav-size: clamp(2rem, 1rem + 2.4vw, 2.875rem);
+  }
+  .footer__nav-link {
+    font-family: var(--font-display);
+    font-weight: 300; /* Geist Light */
+    font-size: var(--footer-nav-size);
+    /* Tight leading so the four links stack compactly (Figma reads ~cap-height
+       rows) and the nav clears the frame-centered title. */
+    line-height: var(--leading-tight);
+    letter-spacing: -0.02em; /* Figma -1px @46px */
+    color: var(--color-fg);
+    text-decoration: none;
+    inline-size: max-content;
+    /* Trim the line box to cap-height → baseline (Figma's technique, same as
+       .about__tag) so the four links stack as a compact block that clears the
+       frame-centred title. Falls back to normal leading where unsupported. */
+    text-box-trim: trim-both;
+    text-box-edge: cap alphabetic;
+    user-select: none;
+    -webkit-user-drag: none;
+    /* Shares the canonical hover tokens with the mask swaps so the whole
+       site's motion language reads the same. */
+    transition:
+      opacity var(--dur-hover) var(--ease-out-soft),
+      filter var(--dur-hover) var(--ease-out-soft);
+  }
+  /* Neighbour fade-blur — hovering one link recedes the others (reused 1:1
+     from .navbar__links, where the same four sections live). */
+  @media (hover: hover) {
+    .footer__nav:has(.footer__nav-link:hover) .footer__nav-link:not(:hover) {
+      opacity: 0.4;
+      filter: blur(2px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .footer__nav-link {
+      transition: none;
+    }
+  }
+
+  /* =================================================================
+     TOP-CENTER — "Axion" pill (scroll-to-top button).
+     Bordered mono tag recipe shared with .about__tag.
+     TODO: swap font to Geist Mono once @fontsource-variable/geist-mono lands.
+     ================================================================= */
+  .footer__badge {
+    grid-area: badge;
+    justify-self: center;
+    /* Centre the label box inside the pill (the swap mask alone left the text
+       flush to the bottom). */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    appearance: none;
+    background: transparent;
+    border: 1px solid var(--color-fg-faint); /* rgba(255,255,255,0.2) */
+    border-radius: 999px;
+    padding-block: var(--pill-section-pad-block); /* figma 7/8 */
+    padding-inline: var(--pill-section-pad-inline); /* figma 10 */
+    color: var(--color-fg);
+    opacity: 0.7;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition:
+      opacity var(--dur-hover) var(--ease-out-soft),
+      border-color var(--dur-hover) var(--ease-out-soft),
+      transform var(--dur-hover) var(--ease-out-soft);
+  }
+  @media (hover: hover) {
+    .footer__badge:hover {
+      opacity: 1;
+      border-color: var(--color-fg-muted);
+      /* Sub-px lift in rem so it scales on 4K (rule precedent: hero CTA). */
+      transform: translateY(-0.0625rem);
+    }
+  }
+  .footer__badge:active {
+    transform: translateY(0);
+  }
+
+  /* Hard-mask hover swap — same text duplicated (rule #18 / buttons).
+     Mask = exactly one line-height, line-height 1.3 (never 1). */
+  .footer__badge-label {
+    display: inline-grid;
+    grid-template-areas: "stack";
+    overflow: hidden;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug);
+    /* No fixed block-size: the text-box-trimmed text below sizes the mask to
+       exactly one cap-height line, so "Axion" optically centres against the
+       pill padding (matches .about__tag) and the translateY swap still clips. */
+  }
+  .footer__badge-text {
+    grid-area: stack;
+    white-space: nowrap;
+    /* Trim to cap-height → baseline so the glyph (not the line box) is what the
+       pill padding centres — same technique as .about__tag / the nav links. */
+    text-box-trim: trim-both;
+    text-box-edge: cap alphabetic;
+    transition: transform var(--dur-hover) var(--ease-out-soft);
+  }
+  .footer__badge-text[data-text="default"] { transform: translateY(0); }
+  .footer__badge-text[data-text="hover"]   { transform: translateY(100%); }
+  @media (hover: hover) {
+    .footer__badge:hover .footer__badge-text[data-text="default"] { transform: translateY(-100%); }
+    .footer__badge:hover .footer__badge-text[data-text="hover"]   { transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .footer__badge,
+    .footer__badge-text {
+      transition: none;
+    }
+  }
+
+  /* =================================================================
+     TOP-RIGHT — brand tagline (fine print, right-gutter aligned)
+     ================================================================= */
+  .footer__tagline {
+    grid-area: tagline;
+    justify-self: end;
+    inline-size: 12.5rem; /* 200px (Figma) */
+    font-family: var(--font-display);
+    font-size: var(--text-sm); /* ≈15px */
+    line-height: var(--leading-snug);
+    color: var(--color-fg);
+    opacity: 0.45; /* Figma fg @ 45% — faint label, still legible on the loop */
+  }
+
+  /* =================================================================
+     CENTER — decorative split headline (mirrors .hero__title*)
+     ================================================================= */
+  .footer__title-block {
+    grid-area: title;
+    justify-self: center;
+    align-self: center;
+    inline-size: min(74.875rem, 100%);
+    /* One max-content column = the width of the widest line ("Agentic
+       decision"); Intelligence + subtitle right-align to that font-sized column
+       edge, so all three right edges sit on ONE vertical baseline that never
+       wanders or overflows with viewport width. 1:1 with .hero__title-block. */
+    display: grid;
+    grid-template-columns: max-content;
+    justify-content: start;
+    /* SVG box width per the ink-tight 822.097×160 viewBox (blur padding trimmed)
+       so box-inline-end === the last glyph's ink edge → right-aligns flush. */
+    --intel-width: calc(var(--text-display) * 0.875 * 822.097 / 160);
+    --intel-edge-nudge: 0.012em;
+    --caption-edge-nudge: 0.19em;
+  }
+  .footer__title {
+    position: relative;
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--text-display);
+    line-height: 0.83;
+    letter-spacing: -0.055em;
+    display: flex;
+    flex-direction: column;
+  }
+  .footer__title-line-1 {
+    color: var(--color-fg);
+    white-space: nowrap;
+    /* Thin stroke adds glyph weight without bumping font-weight (hero parity).
+       1px is a component-internal stroke — allowed by the no-fixed-px rule. */
+    -webkit-text-stroke: 1px var(--color-fg);
+  }
+  .footer__title-word {
+    display: inline;
+  }
+  .footer__title-line-2 {
+    display: block;
+    align-self: flex-end;
+    inline-size: var(--intel-width);
+    block-size: calc(var(--text-display) * 0.875);
+    margin-inline-end: var(--intel-edge-nudge);
+    overflow: visible;
+  }
+  .footer__subtitle {
+    /* Shrink the content box so text-align:end lands the "w" ink on the baseline. */
+    inline-size: calc(100% - var(--caption-edge-nudge));
+    text-align: end;
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    line-height: 1.2;
+    color: var(--color-fg);
+    opacity: 0.7;
+    white-space: nowrap;
+  }
+
+  /* =================================================================
+     BOTTOM — year (left) + legal links (right)
+     ================================================================= */
+  .footer__meta {
+    grid-area: meta;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-md);
+  }
+  .footer__year {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--color-fg);
+    opacity: 0.7; /* Figma fg @ 70% */
+  }
+  .footer__legal {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-sm) var(--space-lg);
+    inline-size: min(46.3125rem, 52vw); /* 741px (Figma) cap, fluid below */
+  }
+  .footer__legal-link {
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--color-fg);
+    text-decoration: none;
+    opacity: 0.45; /* Figma fg @ 45% */
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-drag: none;
+    transition:
+      opacity var(--dur-hover) var(--ease-out-soft),
+      filter var(--dur-hover) var(--ease-out-soft);
+  }
+  /* Same neighbour-fade-blur language as the nav, recalibrated for the
+     fainter base: the hovered link brightens, the others recede further. */
+  @media (hover: hover) {
+    .footer__legal-link:hover {
+      opacity: 1;
+    }
+    .footer__legal:has(.footer__legal-link:hover) .footer__legal-link:not(:hover) {
+      opacity: 0.25;
+      filter: blur(1.5px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .footer__legal-link {
+      transition: none;
+    }
+  }
+
+  /* =================================================================
+     RESPONSIVE
+     ================================================================= */
+  /* Mobile — single column stack. Order: badge, nav, title, tagline, meta.
+     Title stacks its words + drops the Intelligence offset (hero mobile
+     parity) so the headline never overflows. */
+  @media (max-width: 40em) {
+    .footer {
+      grid-template-columns: 1fr;
+      grid-template-rows: repeat(5, auto);
+      grid-template-areas:
+        "badge"
+        "nav"
+        "title"
+        "tagline"
+        "meta";
+      row-gap: var(--space-xl);
+      padding-block: var(--space-2xl) var(--space-lg);
+    }
+    /* Reset the desktop top/bottom insets — mobile uses padding-block +
+       row-gap for the stacked rhythm. */
+    .footer__nav,
+    .footer__badge,
+    .footer__tagline,
+    .footer__meta {
+      margin-block: 0;
+    }
+    .footer__badge {
+      justify-self: center;
+    }
+    .footer__nav {
+      justify-self: start;
+      gap: var(--space-xs);
+    }
+    .footer__tagline {
+      justify-self: start;
+      inline-size: 11.25rem; /* 180px — matches the hero mobile subtitle */
+    }
+    .footer__title-block {
+      /* Drop the max-content column on mobile — stack full-width like the hero. */
+      display: block;
+      justify-self: start;
+      --intel-width: 100%;
+      --intel-edge-nudge: 0;
+      --caption-edge-nudge: 0;
+    }
+    .footer__title-line-1 {
+      display: flex;
+      flex-direction: column;
+      white-space: normal;
+    }
+    .footer__title-word {
+      display: block;
+    }
+    .footer__title-word--offset {
+      align-self: flex-end;
+    }
+    .footer__title-line-2 {
+      align-self: stretch;
+      inline-size: 100%;
+      max-inline-size: 100%;
+    }
+    .footer__subtitle {
+      margin-inline-start: 0;
+      inline-size: 100%;
+      max-inline-size: 100%;
+      text-align: start;
+      white-space: normal;
+    }
+    .footer__meta {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--space-sm);
+    }
+    .footer__legal {
+      inline-size: 100%;
+      justify-content: flex-start;
+      gap: var(--space-xs) var(--space-md);
+    }
+  }
+</style>
+
+<style is:global>
+  /* Safari fallback — the foreignObject backdrop-blur fill inside the
+     Intelligence SVG paints at offset coordinates in WebKit (known bug).
+     Hiding the foreignObjects leaves the visible letter paths intact, which
+     still reads as ghost text. `data-safari` is set on <html> by the inline
+     detector in BaseLayout. Marked is:global because the html-level
+     [data-safari] selector + the unscoped foreignObject children inside the
+     set:html SVG both live outside Astro's scoped-style hashing.
+     Mirrors the hero's identical rule for its own Intelligence SVG. */
+  [data-safari] .footer__title-line-2 foreignObject {
+    display: none;
+  }
+  /* Soft white wash inside each per-letter blur slab so the ghost word reads
+     at the same brightness as the hero's (Chrome). */
+  .footer__title-line-2 foreignObject > div {
+    background-color: rgba(255, 255, 255, 0.07);
+  }
+</style>
+
+<script>
+  /* Footer background (LQIP → poster decode reveal → ping-pong video loop) +
+     "Axion" scroll-to-top button + SPAR-style magnetic snap. The video stack
+     mirrors Header `.hero__bg` + Features' decode-gating / idle contract. */
+  import { gsap } from "gsap";
+  import { ScrollTrigger } from "gsap/ScrollTrigger";
+  import { ensureLenisBridge } from "../lib/scrollBridge";
+  import { detectMediaPrefs } from "../lib/mediaPrefs";
+  import { revealOnDecode } from "../lib/revealOnDecode";
+  import { gateVideosByVisibility } from "../lib/videoGate";
+  import { setupIdleVideoPause } from "../lib/idleVideoPause";
+
+  gsap.registerPlugin(ScrollTrigger);
+  ensureLenisBridge(ScrollTrigger);
+
+  const { slowConnection, reduceMotion } = detectMediaPrefs();
+
+  const bg = document.querySelector<HTMLElement>(".footer__bg");
+  const poster = bg?.querySelector<HTMLImageElement>(".footer__bg-poster");
+  const video = bg?.querySelector<HTMLVideoElement>(".footer__bg-video");
+
+  if (bg && poster) {
+    revealOnDecode(poster, () => bg.setAttribute("data-poster-ready", "true"));
+  }
+
+  /* ── Ping-pong background loop ──────────────────────────────────────────
+     Mirrors the hero/Features video contract: reveal on canplaythrough,
+     decode-gate with IntersectionObserver (the footer is off-screen for most
+     of the page), and pause on `axion:idle`. Dropped on Save-Data / 2g /
+     reduced-motion — the poster is the final frame. */
+  if (bg && video) {
+    if (slowConnection || reduceMotion) {
+      video.remove();
+    } else {
+      const revealVideo = (): void => bg.setAttribute("data-video-ready", "true");
+      video.addEventListener("canplaythrough", revealVideo, { once: true });
+      video.addEventListener(
+        "loadeddata",
+        () => {
+          if (video.readyState >= 3) revealVideo();
+        },
+        { once: true }
+      );
+      video.addEventListener("error", () => video.remove(), { once: true });
+
+      /* Decode-gate (footer is off-screen for most of the page) + idle
+         pause — shared helpers; Features uses the same contract. */
+      gateVideosByVisibility([video]);
+      setupIdleVideoPause([{ bg, video }]);
+    }
+  }
+
+  /* "Axion" pill → smooth scroll to top via Lenis (native fallback when Lenis
+     is absent, e.g. the reduced-motion path). Same mechanic as the navbar's
+     scroll-to-top button. */
+  const badge = document.querySelector<HTMLButtonElement>(".footer__badge");
+  badge?.addEventListener("click", () => {
+    const w = window as Window & {
+      __lenis?: { scrollTo: (target: number, opts?: object) => void };
+    };
+    if (w.__lenis) {
+      w.__lenis.scrollTo(0, { duration: 1.0 });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  });
+
+  /* ── Magnetic snap — the footer settles into view like the SPAR slider.
+     Same velocity-aware recipe (flick > 50 commits in the scroll direction,
+     otherwise round) + duration / delay / ease. Two snap points: footer just
+     entering (0) ↔ footer filling the viewport (1). No `pin`, so it adds no
+     pin-spacer and doesn't touch the Hero/About/SPAR pin coordination.
+     Desktop + non-reduced-motion only (the tall mobile stack scrolls freely);
+     gsap.matchMedia auto-creates / kills it across the breakpoint. */
+  const snapMM = gsap.matchMedia();
+  snapMM.add("(min-width: 40em) and (prefers-reduced-motion: no-preference)", () => {
+    const st = ScrollTrigger.create({
+      trigger: ".footer",
+      start: "top bottom",
+      /* `bottom bottom` (= the page end) settles with the full footer framed —
+         legal pinned at the bottom — rather than clipping it below the fold on
+         viewports a touch shorter than the footer. */
+      end: "bottom bottom",
+      invalidateOnRefresh: true,
+      snap: {
+        snapTo: (value, self) => {
+          const velocity = self?.getVelocity?.() ?? 0;
+          if (Math.abs(velocity) > 50) return velocity > 0 ? 1 : 0;
+          return Math.round(value);
+        },
+        duration: { min: 0.2, max: 0.5 },
+        delay: 0.08,
+        ease: "power3.out",
+      },
+    });
+    return () => st.kill();
+  });
+
+  /* ── Footer hand-off — hide the floating nav pill while the footer owns the
+     screen (the footer carries its own nav + the "Axion" back-to-top button),
+     and restore it on scroll-up. Mirrors the dock's footer-hide; the slide +
+     fade live in Navbar.astro (data-hidden on .navbar). Not gated on
+     reduced-motion — the hide is functional; Navbar's reduced-motion rule just
+     makes it instant. `top top` = the footer has fully settled into the
+     viewport (the snap's resting position), so the pill leaves only once the
+     footer is in place, and returns as soon as you scroll back up. */
+  const navbar = document.querySelector<HTMLElement>(".navbar");
+  if (navbar) {
+    ScrollTrigger.create({
+      trigger: ".footer",
+      start: "top top",
+      onEnter: () => navbar.setAttribute("data-hidden", ""),
+      onLeaveBack: () => navbar.removeAttribute("data-hidden"),
+    });
+  }
+</script>

@@ -1,0 +1,185 @@
+---
+import "../styles/global.css";
+import Navbar from "../components/Navbar.astro";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "Axion — Agentic Decision Intelligence",
+  description = "The decision infrastructure for the cities of tomorrow.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    {/* interactive-widget=resizes-content tells modern browsers (iOS 16.4+,
+        Chrome 108+) to RESIZE the layout viewport when the virtual keyboard
+        appears, instead of the keyboard overlaying content. Combined with the
+        visualViewport tracker below, this keeps the nav chat input visible
+        above the keyboard on mobile. */}
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content"
+    />
+    <meta name="description" content={description} />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    {/* Disable browser scroll restoration. The hero's pin + AVIF sequence
+        animation expects scroll position to start at 0 on every page
+        view. With the default `auto` restoration, reloading mid-page
+        lands the user at their previous scroll position — which yanks
+        them past the hero pin and skips the frame sequence. We opt out
+        of restoration entirely; combined with the scrollTo(0,0) in
+        Header.astro's lockScroll, this guarantees a clean cold-start
+        experience on every reload. Runs synchronously in <head> so it
+        beats the browser's restoration attempt. */}
+    <script is:inline>
+      if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+    </script>
+    {/* Safari (desktop + iOS) misaligns <foreignObject backdrop-filter> inside
+        SVG — known WebKit rendering bug. We flag the browser on <html> so
+        affected components can opt out of the effect. Runs synchronously
+        in <head> before first paint to avoid a flash of misaligned blur.
+        Detection via navigator.vendor (Apple-only) excludes Chrome/Firefox/Edge
+        on Mac, which all use Google/Mozilla/Microsoft vendor strings. */}
+    <script is:inline>
+      (function () {
+        var ua = navigator.userAgent;
+        var isApple = /Apple/.test(navigator.vendor || "");
+        var isOtherEngine = /CriOS|FxiOS|EdgiOS|Chrome|Edg/i.test(ua);
+        if (isApple && !isOtherEngine) {
+          document.documentElement.setAttribute("data-safari", "");
+        }
+      })();
+    </script>
+    {/* Global activity / idle tracker. Single source of truth for "user is
+        away" — drives the background video pause, the navbar sphere RAF
+        pause, and CSS @keyframes throttling (via `animation-play-state` on
+        html[data-idle]).
+          • idle triggers: tab hidden, OR ≥ IDLE_MS without any input event
+          • active triggers: any mousemove / pointerdown / touchstart /
+            keydown / wheel / scroll, or tab returns to foreground
+        Components subscribe via `axion:idle` / `axion:active` events on
+        document, and read live state via `<html data-idle>`. Inline so it
+        runs before paint and the very first idle countdown starts ASAP. */}
+    <script is:inline>
+      (function () {
+        var IDLE_MS = 8000;
+        var html = document.documentElement;
+        var idleTimer;
+        var isIdle = false;
+
+        function goIdle() {
+          if (isIdle) return;
+          isIdle = true;
+          html.setAttribute("data-idle", "");
+          document.dispatchEvent(new CustomEvent("axion:idle"));
+        }
+
+        function goActive() {
+          window.clearTimeout(idleTimer);
+          idleTimer = window.setTimeout(goIdle, IDLE_MS);
+          if (!isIdle) return;
+          isIdle = false;
+          html.removeAttribute("data-idle");
+          document.dispatchEvent(new CustomEvent("axion:active"));
+        }
+
+        var events = ["mousemove", "pointerdown", "touchstart", "keydown", "wheel", "scroll"];
+        for (var i = 0; i < events.length; i++) {
+          document.addEventListener(events[i], goActive, { passive: true });
+        }
+
+        document.addEventListener("visibilitychange", function () {
+          if (document.hidden) goIdle();
+          else goActive();
+        });
+
+        idleTimer = window.setTimeout(goIdle, IDLE_MS);
+      })();
+    </script>
+    {/* visualViewport-based virtual-keyboard tracker. On mobile, when the
+        soft keyboard appears, `window.visualViewport.height` shrinks. We
+        publish that height delta as a CSS var --kb-inset on <html>, plus a
+        data-kb-open attribute when the inset is large enough to be the
+        keyboard (vs the URL bar). Components (e.g. the navbar panel)
+        use the var to constrain their layout so the chat input doesn't get
+        clipped under the keyboard. */}
+    <script is:inline>
+      (function () {
+        if (!window.visualViewport) return;
+        var vp = window.visualViewport;
+        var html = document.documentElement;
+        function update() {
+          var inset = Math.max(0, window.innerHeight - vp.height - vp.offsetTop);
+          html.style.setProperty("--kb-inset", inset + "px");
+          if (inset > 100) html.setAttribute("data-kb-open", "");
+          else html.removeAttribute("data-kb-open");
+          /* Inline max-block-size on the open panel so it shrinks above the
+             keyboard. Goes on the element directly (not via CSS calc + var)
+             because Chrome transitions on var-dependent calcs don't always
+             re-fire when only the var changes (cached interpolation value). */
+          var panel = document.querySelector(".navbar__panel");
+          if (panel && panel.dataset.state === "open" && inset > 0) {
+            panel.style.maxBlockSize = (vp.height - 20) + "px";
+          } else if (panel) {
+            panel.style.maxBlockSize = "";
+          }
+        }
+        vp.addEventListener("resize", update);
+        vp.addEventListener("scroll", update);
+        update();
+      })();
+    </script>
+  </head>
+  <body>
+    {/* Persistent floating central nav — anchoring UI element across pages.
+        Placed before <slot /> so it's first in tab order. z-index keeps it on top.
+        The .liquid recipe inside the Navbar relies on the #lg-dist SVG filter
+        defined inside Header.astro. TODO: extract the defs to BaseLayout so
+        the Navbar works on pages without Header. */}
+    <Navbar />
+    <slot />
+
+    {/* Lenis smooth scroll — single global instance.
+        Exposed as `window.__lenis` so components (e.g. About gallery) can
+        plug GSAP ScrollTrigger into the same RAF loop instead of running
+        their own. Skipped entirely when the user prefers reduced motion —
+        native scroll behavior + GSAP's regular ticker work fine there. */}
+    <script>
+      import Lenis from "lenis";
+
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      if (!reduceMotion) {
+        const lenis = new Lenis({
+          /* Default linear ramp inside Lenis is already pleasant; bump the
+             duration slightly so quick wheel ticks ride out a touch longer
+             — feels less twitchy on scroll-driven sections. */
+          duration: 1.1,
+          easing: (t: number) => Math.min(1, 1.001 - 2 ** (-10 * t)),
+          smoothWheel: true,
+        });
+
+        /* Pause Lenis when the user goes idle (BaseLayout idle tracker emits
+           axion:idle / axion:active). Lenis keeps a RAF loop alive otherwise. */
+        document.addEventListener("axion:idle", () => lenis.stop());
+        document.addEventListener("axion:active", () => lenis.start());
+
+        function raf(time: number) {
+          lenis.raf(time);
+          requestAnimationFrame(raf);
+        }
+        requestAnimationFrame(raf);
+
+        (window as unknown as { __lenis: Lenis }).__lenis = lenis;
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,1245 @@
+---
+/**
+ * SPAR.astro — SPAR Framework section (Figma slide 917:14919).
+ *
+ * Stories pattern (rewritten):
+ *   • Section pins for `(slideCount - 1) * 100%` of additional scroll
+ *     (ScrollTrigger pin + velocity-aware snap, same recipe as About).
+ *   • Scroll progress → discrete slide index via `Math.round`.
+ *   • NO auto-advance, NO timer, NO progress bar. The user is the
+ *     director — they advance by scrolling, by clicking a step pill, or
+ *     by clicking either half of the section background.
+ *
+ * Visual:
+ *   • 4 grid-stacked poster images. Active = opaque + sharp; the rest
+ *     are transparent + blurred + slightly zoomed. Wrapper-level
+ *     transition handles the slide swap.
+ *   • Active poster breathes (`spar-poster-breathe`, 4s ease-in-out).
+ *   • Active step pill breathes IN PHASE with the poster
+ *     (`spar-step-breathe-*`, same 4s ease-in-out). Phase alignment is
+ *     guaranteed because both animations attach from the SAME single
+ *     DOM mutation: the slide writer flips `data-state` on the poster
+ *     and `aria-current` on the pill in the same microtask, so the
+ *     browser applies both keyframes in the same composited frame.
+ *
+ * Custom cursor (Next / Previous):
+ *   • position: fixed pill that follows the mouse via a lerp written
+ *     in the script. Same anatomy as Header's `.custom-cursor`.
+ *   • Direction is bound to the SLIDE, not the pointer position —
+ *     "Next" while a next slide exists, "Previous" only on the last
+ *     slide. The pointer's X position no longer matters; the prior
+ *     centerline-detection added a `setNextCursorState` call on every
+ *     pointermove, which read as lag.
+ *   • `cursorHasCoords` flag suppresses the pill until we know the
+ *     pointer's real position — fixes the prior "flashes at (0,0)
+ *     before the first pointermove" bug.
+ *
+ * Position rule compliance (CLAUDE.md #8):
+ *   No new `position: absolute`. Grid-stacks throughout. The Next
+ *   cursor's `position: fixed` was approved previously.
+ */
+
+const slides = [
+  {
+    label: "Sense",
+    headlineLines: ["See the actual data", "for the entire sector"],
+    caption: "Discovery Agent(s) maps and enriches data",
+  },
+  {
+    label: "Predict",
+    headlineLines: ["Spot the risk before", "the violation"],
+    caption: "Risk Agent(s) predicts potential risks",
+  },
+  {
+    label: "Act",
+    headlineLines: ["Inspect and enforce,", "with humans in command."],
+    caption: "Enforcement Agent(s) executes required actions",
+  },
+  {
+    label: "React",
+    headlineLines: ["Learn, adapt,", "and evolve."],
+    caption: "Impact Agent(s) measures and recommends",
+  },
+];
+
+const posters = [
+  "/spar/poster-sense.jpg",
+  "/spar/poster-predict.jpg",
+  "/spar/poster-act.jpg",
+  "/spar/poster-react.jpg",
+];
+
+const MAX_LINES = Math.max(...slides.map((s) => s.headlineLines.length));
+const headlineMatrix: string[][] = [];
+for (let line = 0; line < MAX_LINES; line++) {
+  headlineMatrix.push(slides.map((s) => s.headlineLines[line] ?? ""));
+}
+---
+
+<section class="spar" id="spar" aria-labelledby="spar-tag" data-spar>
+  {/* ───────── Background — 4 stacked posters ───────── */}
+  <div class="spar__bg" aria-hidden="true">
+    {
+      posters.map((src, i) => (
+        <div
+          class="spar__bg-poster-wrap"
+          data-slide={i}
+          data-state={i === 0 ? "active" : "inactive"}
+        >
+          <img
+            class="spar__bg-poster"
+            src={src}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            width="3000"
+            height="1688"
+          />
+        </div>
+      ))
+    }
+  </div>
+
+  {/* ───────── Slide content ───────── */}
+  <div class="spar__stage">
+    <div class="spar__center">
+      <p
+        class="spar__label-mask"
+        aria-live="polite"
+        aria-label="Active SPAR step"
+      >
+        {
+          slides.map((s, i) => (
+            <span
+              class="spar__label"
+              data-index={i}
+              data-state={i === 0 ? "active" : "next"}
+              aria-hidden={i !== 0 ? "true" : "false"}
+            >
+              {s.label}
+            </span>
+          ))
+        }
+      </p>
+
+      <div
+        class="spar__headline-stack"
+        aria-live="polite"
+        aria-label="Active SPAR headline"
+      >
+        {
+          headlineMatrix.map((linesPerSlide, lineIdx) => (
+            <div class="spar__headline-line-mask" data-line={lineIdx + 1}>
+              {linesPerSlide.map((text, slideIdx) => (
+                <span
+                  class="spar__headline-line"
+                  data-index={slideIdx}
+                  data-state={slideIdx === 0 ? "active" : "next"}
+                  aria-hidden={slideIdx !== 0 ? "true" : "false"}
+                >
+                  {text}
+                </span>
+              ))}
+            </div>
+          ))
+        }
+      </div>
+
+      <div class="spar__caption">
+        <div
+          class="spar__caption-mask"
+          aria-live="polite"
+          aria-label="Active SPAR agent"
+        >
+          {
+            slides.map((s, i) => (
+              <span
+                class="spar__caption-text"
+                data-index={i}
+                data-state={i === 0 ? "active" : "next"}
+                aria-hidden={i !== 0 ? "true" : "false"}
+              >
+                {s.caption}
+              </span>
+            ))
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* ───────── Persistent chrome ───────── */}
+  <div class="spar__chrome">
+    <p class="spar__tag" id="spar-tag">SPAR Framework</p>
+
+    <div class="spar__footer">
+      {/* Step indicator — 4 button pills. The active pill carries
+          `aria-current="step"` set both in this template (for the
+          initial paint) and by the slide writer at runtime. The
+          breathe keyframe hangs off that attribute alone. */}
+      <ol class="spar__steps" role="list" aria-label="SPAR step indicator">
+        {
+          slides.map((s, i) => (
+            <li>
+              <button
+                class="spar__step"
+                type="button"
+                data-index={i}
+                data-state={i === 0 ? "active" : "inactive"}
+                aria-current={i === 0 ? "step" : "false"}
+                aria-label={`Jump to ${s.label}`}
+              >
+                <span class="spar__step-label">{s.label}</span>
+              </button>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </div>
+
+  {/* ───────── Direction cursor ─────────
+      `position: fixed` was approved previously per CLAUDE.md rule #8.
+      Two text candidates stack inside one hard-mask. `data-direction`
+      on the root flips which one rides at translateY(0). The pill is
+      hidden when the user can't act on a direction (prev on slide 0,
+      next on last slide). */}
+  <div
+    class="spar__next-cursor"
+    data-state="hidden"
+    data-direction="next"
+    aria-hidden="true"
+  >
+    <div class="spar__next-cursor-pill">
+      <div class="spar__next-cursor-mask">
+        <span class="spar__next-cursor-text" data-direction="next">Next</span>
+        <span class="spar__next-cursor-text" data-direction="prev">
+          Previous
+        </span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* ═══════════════════════════════════════════════════════════
+     Local tokens — lifted from Figma slide 917:14919.
+     ═══════════════════════════════════════════════════════════ */
+  .spar {
+    --headline-size: clamp(2.5rem, 1rem + 4.5vw, 5.625rem);
+    /* line-height: 0.89 was tighter than the em-box so descenders (p in
+       "Spot", "adapt", commas) got clipped by the mask edge AND the
+       transition needed opacity to hide the artifact. Snug (1.3) fits
+       descenders, lets the hard-mask pattern run transform-only per
+       CLAUDE.md rule 18 #2/5. */
+    --headline-leading: var(--leading-snug);
+    --headline-tracking: -0.022em;
+
+    --label-size: clamp(1.375rem, 0.85rem + 1.85vw, 2.25rem);
+    --label-leading: var(--leading-snug);
+    --label-tracking: -0.027em;
+
+    --caption-size: var(--text-xs);
+
+    --step-width: clamp(4.5rem, 8vw, 7.5rem);
+    --step-height: 2.375rem;
+    --step-gap: clamp(0.5rem, 1.4vw, 1.25rem);
+    --step-pad: 0.25rem;
+    --step-radius: 0.625rem;
+    --step-radius-inner: 0.3125rem;
+  }
+
+  /* ───────── Section frame ───────── */
+  .spar {
+    position: relative;
+    block-size: 100svh;
+    inline-size: 100%;
+    background: var(--color-bg);
+    overflow: hidden;
+    display: grid;
+    grid-template-areas: "stack";
+    /* Cap the stack column at the section width. Without this the
+       `white-space: nowrap` headline/caption lines (required by the
+       hard-mask swap, rule 18) expand the auto track to their
+       min-content width, blow the whole stack past the viewport, and
+       anchor it left — which is what threw every element off-centre on
+       mobile. minmax(0, 1fr) makes the column refuse to grow, so any
+       over-wide line overflows symmetrically and is clipped centred. */
+    grid-template-columns: minmax(0, 1fr);
+    isolation: isolate;
+  }
+
+  .spar__bg,
+  .spar__stage,
+  .spar__chrome {
+    grid-area: stack;
+    inline-size: 100%;
+    block-size: 100%;
+  }
+
+  /* ───────── Background ───────── */
+  .spar__bg {
+    z-index: 0;
+    display: grid;
+    grid-template-areas: "stack";
+    background: var(--color-bg);
+  }
+
+  /* Each poster wrapper is a grid-stack cell. Active = opaque + sharp;
+     inactive = transparent + blurred + slightly zoomed. The wrapper's
+     transition handles the slide swap; the inner <img> handles
+     breathing, so the two motions don't fight over `transform`. */
+  .spar__bg-poster-wrap {
+    grid-area: stack;
+    inline-size: 100%;
+    block-size: 100%;
+    opacity: 0;
+    filter: blur(18px);
+    transform: scale(1.06);
+    pointer-events: none;
+    user-select: none;
+    will-change: opacity, filter, transform;
+    transition:
+      opacity 1.1s var(--ease-morph),
+      filter 1.1s var(--ease-morph),
+      transform 1.1s var(--ease-morph);
+  }
+
+  .spar__bg-poster-wrap[data-state="active"] {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spar__bg-poster-wrap {
+      filter: none;
+      transform: none;
+      transition: opacity 0.4s ease;
+    }
+  }
+
+  .spar__bg-poster {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  }
+
+  /* ───────── Breathing — poster + active step share phase ─────────
+     Both animations are `4s ease-in-out infinite` with the SAME
+     0/50/100 milestone shape. They start in the same composited frame
+     because both attach from one single DOM mutation: the slide
+     writer flips `data-state` on the poster and `aria-current` on the
+     pill in the same microtask. */
+  .spar__bg-poster-wrap[data-state="active"] .spar__bg-poster {
+    animation: spar-poster-breathe 4s ease-in-out infinite;
+  }
+
+  @keyframes spar-poster-breathe {
+    0%, 100% {
+      transform: scale(1);
+      filter: brightness(1);
+    }
+    50% {
+      transform: scale(1.025);
+      filter: brightness(1.06);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spar__bg-poster-wrap[data-state="active"] .spar__bg-poster {
+      animation: none;
+    }
+  }
+
+  /* Vignette — gives editorial center-bias to the text. */
+  .spar__bg::after {
+    content: "";
+    grid-area: stack;
+    inline-size: 100%;
+    block-size: 100%;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        ellipse at center,
+        rgba(0, 0, 0, 0.15) 0%,
+        rgba(0, 0, 0, 0.15) 35%,
+        rgba(0, 0, 0, 0.55) 100%
+      );
+  }
+
+  /* ───────── Slide content stage ───────── */
+  .spar__stage {
+    z-index: 1;
+    display: grid;
+    grid-template-rows: 1fr auto 1fr;
+    /* Single capped column — same blowout guard as the section. */
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    align-items: center;
+    text-align: center;
+    padding-inline: var(--page-padding);
+    pointer-events: none;
+  }
+
+  .spar__center {
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(0.625rem, 1.5vw, 1.25rem);
+    color: var(--color-fg);
+    inline-size: 100%;
+    max-inline-size: 70rem;
+    /* Don't let nowrap children force this flex item past its column. */
+    min-inline-size: 0;
+  }
+
+  /* ───────── Label mask ───────── */
+  .spar__label-mask {
+    margin: 0;
+    display: grid;
+    grid-template-areas: "stack";
+    overflow: hidden;
+    block-size: calc(var(--label-size) * var(--label-leading));
+    inline-size: max-content;
+  }
+
+  .spar__label {
+    grid-area: stack;
+    font-family: var(--font-display);
+    font-weight: 300;
+    font-size: var(--label-size);
+    line-height: var(--label-leading);
+    letter-spacing: var(--label-tracking);
+    color: var(--color-fg);
+    white-space: nowrap;
+    transform: translateY(100%);
+    transition: transform var(--dur-hover) var(--ease-out-soft);
+    will-change: transform;
+  }
+
+  .spar__label[data-state="active"] {
+    transform: translateY(0);
+  }
+  .spar__label[data-state="past"] {
+    transform: translateY(-100%);
+  }
+  .spar__label[data-state="next"] {
+    transform: translateY(100%);
+  }
+
+  /* ───────── Headline — per-line masks ───────── */
+  .spar__headline-stack {
+    display: flex;
+    flex-direction: column;
+    inline-size: 100%;
+    min-inline-size: 0;
+  }
+
+  .spar__headline-line-mask {
+    display: grid;
+    grid-template-areas: "stack";
+    grid-template-columns: minmax(0, 1fr);
+    overflow: hidden;
+    inline-size: 100%;
+    /* Mask is still sized to one full line-height so each line's
+       text clips correctly during the hard-mask swap. The visible
+       line-to-line distance is compressed below via negative
+       margin on subsequent masks — not by shrinking the mask
+       itself, which would also crop glyph ascenders / descenders. */
+    block-size: calc(var(--headline-size) * var(--headline-leading));
+  }
+
+  /* Tighten the visual leading: each subsequent line pulls up by 20%
+     of a mask's height. At `-0.5` (half a line) the tight 0.89
+     line-height collided glyph ascenders/descenders; `-0.25` read a
+     touch cramped — `-0.2` leaves a hair more air. Nudge toward 0 to
+     loosen, toward -0.5 to tighten. */
+  .spar__headline-line-mask + .spar__headline-line-mask {
+    margin-block-start: calc(var(--headline-size) * var(--headline-leading) * -0.2);
+  }
+
+  .spar__headline-line {
+    grid-area: stack;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--headline-size);
+    line-height: var(--headline-leading);
+    letter-spacing: var(--headline-tracking);
+    color: var(--color-fg);
+    text-align: center;
+    white-space: nowrap;
+    transform: translateY(100%);
+    transition: transform var(--dur-hover) var(--ease-out-soft);
+    will-change: transform;
+  }
+
+  .spar__headline-line[data-state="active"] {
+    transform: translateY(0);
+  }
+  .spar__headline-line[data-state="past"] {
+    transform: translateY(-100%);
+  }
+  .spar__headline-line[data-state="next"] {
+    transform: translateY(100%);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spar__label,
+    .spar__headline-line {
+      transition: none;
+    }
+  }
+
+  /* ───────── Caption ───────── */
+  .spar__caption {
+    align-self: center;
+    inline-size: max-content;
+    max-inline-size: min(28rem, 100%);
+    margin-block-start: clamp(0.75rem, 2vw, 1.5rem);
+  }
+
+  .spar__caption-mask {
+    display: grid;
+    grid-template-areas: "stack";
+    grid-template-columns: minmax(0, 1fr);
+    overflow: hidden;
+    inline-size: 100%;
+    block-size: calc(var(--caption-size) * var(--leading-snug));
+  }
+
+  .spar__caption-text {
+    grid-area: stack;
+    font-family: var(--font-body);
+    font-size: var(--caption-size);
+    line-height: var(--leading-snug);
+    color: var(--color-fg-muted);
+    text-align: center;
+    white-space: nowrap;
+    transform: translateY(100%);
+    transition: transform var(--dur-hover) var(--ease-out-soft);
+    will-change: transform;
+  }
+
+  .spar__caption-text[data-state="active"] {
+    transform: translateY(0);
+  }
+  .spar__caption-text[data-state="past"] {
+    transform: translateY(-100%);
+  }
+  .spar__caption-text[data-state="next"] {
+    transform: translateY(100%);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spar__caption-text {
+      transition: none;
+    }
+  }
+
+  /* ───────── Chrome layer ───────── */
+  .spar__chrome {
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    padding-block: clamp(5.5rem, 13svh, 8rem) clamp(1.25rem, 3.5svh, 2.5rem);
+    padding-inline: var(--page-padding);
+    pointer-events: none;
+  }
+
+  .spar__chrome > * {
+    pointer-events: auto;
+  }
+
+  .spar__tag {
+    grid-row: 1;
+    justify-self: center;
+    margin: 0;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: var(--text-xs);
+    line-height: 1.28;
+    color: var(--color-fg);
+    border: 1px solid var(--color-fg-faint);
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.1);
+    padding-block: var(--pill-section-pad-block);
+    padding-inline: var(--pill-section-pad-inline);
+    inline-size: max-content;
+    text-box-trim: trim-both;
+    text-box-edge: cap alphabetic;
+  }
+
+  .spar__footer {
+    grid-row: 3;
+    display: flex;
+    justify-content: center;
+    align-items: end;
+    inline-size: 100%;
+  }
+
+  /* ───────── Step indicator ─────────
+     `data-state="active"` on every step at index ≤ currentSlide
+     (cumulative reach — solid white border).
+     `aria-current="step"` on EXACTLY the current slide's pill
+     (drives the breathe keyframe — only ONE pill breathes at a time). */
+  .spar__steps {
+    grid-column: 2;
+    justify-self: center;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: var(--step-gap);
+  }
+
+  .spar__steps > li {
+    display: contents;
+  }
+
+  .spar__step {
+    inline-size: var(--step-width);
+    block-size: var(--step-height);
+    padding: var(--step-pad);
+    border: 1px solid var(--color-fg-faint);
+    border-radius: var(--step-radius);
+    background: rgba(255, 255, 255, 0.02);
+    backdrop-filter: blur(11.5px);
+    -webkit-backdrop-filter: blur(11.5px);
+    box-sizing: border-box;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    transition:
+      border-color var(--dur-hover) var(--ease-out-soft),
+      transform var(--dur-hover) var(--ease-out-soft);
+    display: grid;
+    grid-template-areas: "stack";
+    position: relative;
+  }
+
+  @media (hover: hover) {
+    .spar__step:hover {
+      transform: translateY(-2px);
+    }
+  }
+
+  .spar__step:focus-visible {
+    outline: 2px solid var(--color-fg);
+    outline-offset: 3px;
+  }
+
+  .spar__step[data-state="active"] {
+    border-color: var(--color-fg);
+  }
+
+  .spar__step-label {
+    grid-area: stack;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(11.5px);
+    -webkit-backdrop-filter: blur(11.5px);
+    border-radius: var(--step-radius-inner);
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    line-height: 1.28;
+    color: var(--color-fg);
+    opacity: 0.9;
+    text-box-trim: trim-both;
+    text-box-edge: cap alphabetic;
+    user-select: none;
+  }
+
+  /* ───────── Step breathe — phase-locked with poster ─────────
+     Same 4s ease-in-out shape as `spar-poster-breathe` so when both
+     animations attach from the same DOM mutation, the user perceives
+     a single coordinated pulse across the canvas. Amplitudes are
+     intentionally larger here than on the poster — the step pill is
+     a fraction of the viewport, so matching poster amplitude (scale
+     1.025) would be invisible at this scale. Scale 1.04 + brightness
+     pulse + soft outer glow + opacity 0.85↔1 reads as "alive" on a
+     ~80×38px target. */
+  .spar__step[aria-current="step"] {
+    animation: spar-step-breathe-glow 4s ease-in-out infinite;
+  }
+
+  .spar__step[aria-current="step"] .spar__step-label {
+    animation: spar-step-breathe-label 4s ease-in-out infinite;
+  }
+
+  @keyframes spar-step-breathe-glow {
+    0%, 100% {
+      /* Animated border-color overrides the static white from
+         `[data-state="active"]` while this animation runs — past
+         steps (data-state=active but NOT aria-current) keep their
+         solid white border, the current step pulses. Wide alpha
+         range (0.15 → 1) is intentional: the pill sits on a bright,
+         already-breathing poster, so a subtle alpha pulse gets
+         visually absorbed. */
+      border-color: rgba(255, 255, 255, 0.15);
+      filter: brightness(0.92);
+      box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+    }
+    50% {
+      border-color: rgb(255, 255, 255);
+      filter: brightness(1.15);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.5),
+        0 0 24px 2px rgba(255, 255, 255, 0.4);
+    }
+  }
+
+  @keyframes spar-step-breathe-label {
+    0%, 100% {
+      transform: scale(0.98);
+      opacity: 0.7;
+    }
+    50% {
+      transform: scale(1.05);
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spar__step {
+      transition: none;
+    }
+    .spar__step[aria-current="step"],
+    .spar__step[aria-current="step"] .spar__step-label {
+      animation: none;
+    }
+  }
+
+  /* ───────── Next cursor — fixed pill ───────── */
+  .spar__next-cursor {
+    position: fixed;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.2s ease,
+      visibility 0s linear 0.2s;
+    will-change: transform;
+  }
+
+  .spar__next-cursor[data-state="visible"] {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.2s ease;
+  }
+
+  .spar__next-cursor-pill {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* Pre-sized to the longer candidate ("Previous") so the pill
+       doesn't reflow when the user crosses the centerline. */
+    min-inline-size: 6rem;
+    padding-block: 0.625rem;
+    padding-inline: 1.125rem;
+    border-radius: 999rem;
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(10px) saturate(140%);
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    /* Pill anchored to the top-right of the pointer arrow. */
+    transform: translate(1rem, calc(-100% - 0.5rem));
+  }
+
+  .spar__next-cursor-mask {
+    display: grid;
+    grid-template-areas: "stack";
+    justify-items: center;
+    overflow: hidden;
+    block-size: calc(var(--text-xs) * var(--leading-snug));
+  }
+
+  .spar__next-cursor-text {
+    grid-area: stack;
+    display: block;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug);
+    color: var(--color-fg);
+    white-space: nowrap;
+    transform: translateY(100%);
+    will-change: transform;
+  }
+
+  /* Transition only while visible — invisible direction flips snap to
+     position so the cursor doesn't fade in mid-slide. */
+  .spar__next-cursor[data-state="visible"] .spar__next-cursor-text {
+    transition: transform var(--dur-hover) var(--ease-out-soft);
+  }
+
+  .spar__next-cursor[data-direction="next"] .spar__next-cursor-text[data-direction="next"],
+  .spar__next-cursor[data-direction="prev"] .spar__next-cursor-text[data-direction="prev"] {
+    transform: translateY(0);
+  }
+  .spar__next-cursor[data-direction="next"] .spar__next-cursor-text[data-direction="prev"] {
+    transform: translateY(100%);
+  }
+  .spar__next-cursor[data-direction="prev"] .spar__next-cursor-text[data-direction="next"] {
+    transform: translateY(-100%);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spar__next-cursor[data-state="visible"] .spar__next-cursor-text,
+    .spar__next-cursor {
+      transition: none;
+    }
+  }
+
+  /* Suppress the native cursor only while the custom pill is visible. */
+  .spar[data-next-active="true"] {
+    cursor: none;
+  }
+  .spar[data-next-active="true"] .spar__step {
+    cursor: pointer;
+  }
+
+  /* Touch / coarse pointer — system cursor stays, custom pill hidden. */
+  @media (hover: none), (pointer: coarse) {
+    .spar__next-cursor {
+      display: none;
+    }
+    .spar[data-next-active="true"] {
+      cursor: auto;
+    }
+  }
+
+  /* ───────── Responsive ───────── */
+  @media (max-width: 48em) {
+    .spar {
+      /* The hard-mask swap (rule 18) requires `white-space: nowrap`, so
+         the headline can't wrap — it must FIT on one line. Shrink it so
+         the widest line ("with humans in command.") stays within the
+         viewport. Caps at ~3.15rem to meet the desktop size at the 48em
+         handoff; floor keeps it legible on the narrowest phones. */
+      --headline-size: clamp(1.375rem, 7vw, 3.15rem);
+    }
+    .spar__chrome {
+      /* Top clears the fixed navbar pill (~82px tall incl. its 10px top
+         gutter) so the "SPAR Framework" tag no longer collides with it.
+         Bottom stays compact for the step pills. */
+      padding-block: clamp(5.5rem, 13svh, 7rem) clamp(1.25rem, 3.5svh, 2.5rem);
+      padding-inline: clamp(1rem, 4vw, 2rem);
+    }
+  }
+</style>
+
+<script>
+  /* ═══════════════════════════════════════════════════════════
+     SPAR — scroll-driven stories (user-paced).
+
+     Pin       — ScrollTrigger pins the section at `top top` and
+                 reserves `(slideCount - 1) * 100%` of additional
+                 scroll distance via pinSpacer.
+     Slide map — `idx = Math.round(progress * lastSlideIdx)` flips
+                 the discrete slide index right at the midpoint
+                 between snap points. Posters, text masks, and
+                 step-pill `aria-current` all key off `currentSlide`.
+     Snap      — velocity-aware. Flick commits to the next snap in
+                 the scroll direction; gentle release rounds to
+                 nearest. Magnet feel without forcing a direction.
+
+     There is NO timer, NO auto-advance, NO progress bar. The user
+     drives slide changes by scroll, by clicking a step pill, or by
+     clicking either viewport half of the section.
+     ═══════════════════════════════════════════════════════════ */
+  import gsap from "gsap";
+  import { ScrollTrigger } from "gsap/ScrollTrigger";
+  import { ensureLenisBridge } from "../lib/scrollBridge";
+
+  gsap.registerPlugin(ScrollTrigger);
+  ensureLenisBridge(ScrollTrigger);
+
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  type LenisLite = {
+    scrollTo: (
+      target: number,
+      options?: {
+        duration?: number;
+        easing?: (t: number) => number;
+        lock?: boolean;
+        immediate?: boolean;
+        force?: boolean;
+      }
+    ) => void;
+  };
+  const getLenis = (): LenisLite | undefined =>
+    (window as Window & { __lenis?: LenisLite }).__lenis;
+
+  const section = document.querySelector<HTMLElement>("[data-spar]");
+
+  if (section) {
+    const posterWraps = Array.from(
+      section.querySelectorAll<HTMLElement>(".spar__bg-poster-wrap")
+    );
+    const labels = Array.from(
+      section.querySelectorAll<HTMLElement>(".spar__label")
+    );
+    const headlineLines = Array.from(
+      section.querySelectorAll<HTMLElement>(".spar__headline-line")
+    );
+    const captions = Array.from(
+      section.querySelectorAll<HTMLElement>(".spar__caption-text")
+    );
+    const steps = Array.from(
+      section.querySelectorAll<HTMLElement>(".spar__step")
+    );
+    const nextCursor = section.querySelector<HTMLElement>(".spar__next-cursor");
+    const videoDock = document.querySelector<HTMLElement>(".hero__video");
+
+    const slideCount = labels.length; // 4
+    const lastSlideIdx = slideCount - 1; // 3
+
+    /* Click step pill / Next-cursor click — direct user gesture,
+       snappier than a scroll-driven snap. */
+    const JUMP_DURATION = 0.55;
+
+    /* ─── State ───
+       currentSlide=-1 sentinel so the first setSlide(0) call still
+       writes (we'd early-return otherwise). */
+    let currentSlide = -1;
+    let running = false;
+    let paused = false;
+    let scrollTrigger: ScrollTrigger | null = null;
+
+    /* ─── Slide writer ─── */
+    const setMaskState = (el: HTMLElement, i: number, idx: number): void => {
+      const state = i === idx ? "active" : i < idx ? "past" : "next";
+      el.dataset.state = state;
+      el.setAttribute("aria-hidden", state === "active" ? "false" : "true");
+    };
+
+    const setSlide = (idx: number): void => {
+      if (idx === currentSlide) return;
+      currentSlide = idx;
+
+      /* All four DOM mutations live in one synchronous block — the
+         browser commits them in the SAME composited frame, so the
+         poster-breathe and step-breathe animations restart in lockstep. */
+      posterWraps.forEach((wrap, i) => {
+        wrap.dataset.state = i === idx ? "active" : "inactive";
+      });
+      labels.forEach((el, i) => setMaskState(el, i, idx));
+      headlineLines.forEach((el) => {
+        const i = parseInt(el.dataset.index ?? "0", 10);
+        setMaskState(el, i, idx);
+      });
+      captions.forEach((el, i) => setMaskState(el, i, idx));
+      steps.forEach((el, i) => {
+        el.dataset.state = i <= idx ? "active" : "inactive";
+        el.setAttribute("aria-current", i === idx ? "step" : "false");
+      });
+
+      updateNextCursorState();
+    };
+
+    /* ─── Direction cursor ───
+       Fixed pill that follows the mouse via lerp. Direction depends
+       only on which slide we're on: "Next" while a next slide exists,
+       "Previous" once we reach the last slide. The pointer's X is
+       used purely to position the pill — not to pick the direction. */
+    let cursorX = 0;
+    let cursorY = 0;
+    let cursorTargetX = 0;
+    let cursorTargetY = 0;
+    let cursorRaf = 0;
+    let cursorOverButton = false;
+    let cursorInSection = false;
+    /* Suppresses the pill before we know where the pointer actually
+       is — fixes the "flashes at (0,0)" bug on first paint. */
+    let cursorHasCoords = false;
+
+    const updateNextCursorState = (): void => {
+      if (!nextCursor) return;
+      const canPrev = currentSlide > 0;
+      const canNext = currentSlide < lastSlideIdx;
+      /* Forward-biased: show Next whenever it's available, fall back
+         to Prev on the dead end (last slide). */
+      const direction: "prev" | "next" = canNext ? "next" : "prev";
+      /* Visibility is PURELY pointer-driven — independent of the
+         scroll machine (`running` / `paused`). On slides 0 and 3 the
+         snap physics can overshoot past the pin edge for a single
+         frame, which used to fire ScrollTrigger's onLeave / onLeaveBack
+         and stop the machine → cursor blinked off. The pointer is
+         still over the section the whole time, so this gate is the
+         honest one. */
+      const shouldShow =
+        currentSlide >= 0 &&
+        cursorInSection &&
+        cursorHasCoords &&
+        !cursorOverButton &&
+        (canNext || canPrev);
+      nextCursor.dataset.state = shouldShow ? "visible" : "hidden";
+      nextCursor.dataset.direction = direction;
+      section.dataset.nextActive = shouldShow ? "true" : "false";
+    };
+
+    const lerpCursor = (): void => {
+      cursorX += (cursorTargetX - cursorX) * 0.22;
+      cursorY += (cursorTargetY - cursorY) * 0.22;
+      /* Always write the transform — even when hidden — so the
+         pill is already at the right spot when it next becomes
+         visible. (Gating on visibility froze the position and
+         caused a snap-to-stale-coords flash on re-enter.) */
+      if (nextCursor) {
+        nextCursor.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0)`;
+      }
+      cursorRaf = requestAnimationFrame(lerpCursor);
+    };
+    const startCursorRaf = (): void => {
+      if (cursorRaf || reduceMotion) return;
+      cursorRaf = requestAnimationFrame(lerpCursor);
+    };
+    const stopCursorRaf = (): void => {
+      if (cursorRaf) {
+        cancelAnimationFrame(cursorRaf);
+        cursorRaf = 0;
+      }
+    };
+
+    /* ─── Scroll-driven jump (Lenis or native fallback) ───
+       For programmatic jumps only (click a step / click section half).
+       `lock: true` so the user's own scroll input doesn't fight a
+       deliberate click. */
+    const scrollPositionForSlide = (idx: number): number => {
+      const st = scrollTrigger;
+      if (!st) return window.scrollY;
+      const span = st.end - st.start;
+      return st.start + (span * idx) / lastSlideIdx;
+    };
+
+    const jumpToSlide = (idx: number): void => {
+      const targetY = scrollPositionForSlide(idx);
+      const lenis = getLenis();
+      if (lenis?.scrollTo) {
+        lenis.scrollTo(targetY, {
+          duration: JUMP_DURATION,
+          lock: true,
+          easing: (t) => 1 - Math.pow(1 - t, 3),
+        });
+      } else {
+        window.scrollTo({ top: targetY, behavior: "smooth" });
+      }
+    };
+
+    /* ─── Machine lifecycle ───
+       `running` / `paused` are kept as bookkeeping for any future
+       state that needs to know whether the section is actively in
+       view, but the cursor RAF is no longer tied to them — it runs
+       while the pointer is in the section (start/stop in pointermove
+       and section pointerleave below). This prevents the boundary
+       blink on slides 0 / 3 where a snap overshoot would briefly
+       fire onLeave / onLeaveBack and stop the RAF mid-lerp. */
+    const startMachine = (): void => {
+      if (running) return;
+      running = true;
+      paused = false;
+      updateNextCursorState();
+    };
+
+    const stopMachine = (): void => {
+      if (!running) return;
+      running = false;
+      paused = false;
+      updateNextCursorState();
+    };
+
+    /* ─── Idle / visibility pause ─── */
+    const pauseMachine = (): void => {
+      if (!running || paused) return;
+      paused = true;
+      updateNextCursorState();
+    };
+    const resumeMachine = (): void => {
+      if (!running || !paused) return;
+      paused = false;
+      updateNextCursorState();
+    };
+    document.addEventListener("axion:idle", pauseMachine);
+    document.addEventListener("axion:active", resumeMachine);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) pauseMachine();
+      else resumeMachine();
+    });
+
+    /* ─── Step click → jump ───
+       `cursorOverButton` is computed inside the window-level
+       pointermove handler below from `e.target.closest('.spar__step')`
+       — that's one source of truth. Per-button pointerenter/leave
+       listeners used to track the same thing, but fast left/right
+       sweeps coalesce / reorder enter/leave events, leaving the flag
+       stuck "true" with the custom cursor invisibly hidden. */
+    steps.forEach((stepBtn, i) => {
+      stepBtn.addEventListener("click", () => jumpToSlide(i));
+    });
+
+    /* ─── Section bg click → match the cursor's direction ───
+       Click does whatever the cursor currently shows: forward when a
+       next slide exists, otherwise back. Step pills handle their own
+       click first via bubble order. */
+    section.addEventListener("click", (e) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest(".spar__step")) return;
+      if (!running) return;
+      if (currentSlide < lastSlideIdx) {
+        jumpToSlide(currentSlide + 1);
+      } else if (currentSlide > 0) {
+        jumpToSlide(currentSlide - 1);
+      }
+    });
+
+    /* ─── Direction-cursor mouse follow ───
+       Pointer state lives in two places, redundantly: section
+       pointerenter/leave (fast initial set) AND a `target.closest`
+       check inside window pointermove (truth source that survives
+       coalesced enter/leave events on fast sweeps across borders). */
+    section.addEventListener("pointerenter", (e: PointerEvent) => {
+      cursorInSection = true;
+      cursorTargetX = e.clientX;
+      cursorTargetY = e.clientY;
+      if (!cursorHasCoords) {
+        cursorX = e.clientX;
+        cursorY = e.clientY;
+        cursorHasCoords = true;
+      }
+      startCursorRaf();
+      updateNextCursorState();
+    });
+    section.addEventListener("pointerleave", () => {
+      cursorInSection = false;
+      updateNextCursorState();
+      stopCursorRaf();
+    });
+    window.addEventListener(
+      "pointermove",
+      (e: PointerEvent) => {
+        cursorTargetX = e.clientX;
+        cursorTargetY = e.clientY;
+        if (!cursorHasCoords) {
+          cursorX = e.clientX;
+          cursorY = e.clientY;
+          cursorHasCoords = true;
+        }
+        /* Read both "in section" and "over button" from the same
+           target chain. If pointerenter on the section was coalesced
+           with the move that landed us inside, this restores
+           cursorInSection on the next frame. */
+        const target = e.target as HTMLElement | null;
+        const overSpar = !!target?.closest?.("[data-spar]");
+        const overBtn = overSpar && !!target?.closest?.(".spar__step");
+        let changed = false;
+        if (overSpar !== cursorInSection) {
+          cursorInSection = overSpar;
+          changed = true;
+          if (overSpar) startCursorRaf();
+        }
+        if (overBtn !== cursorOverButton) {
+          cursorOverButton = overBtn;
+          changed = true;
+        }
+        if (changed) updateNextCursorState();
+        if (reduceMotion && nextCursor) {
+          nextCursor.style.transform = `translate3d(${e.clientX}px, ${e.clientY}px, 0)`;
+        }
+      },
+      { passive: true }
+    );
+
+    /* ─── Initial paint ───
+       Astro template already set the first poster, first label, first
+       headline-line per row, first caption, and first step pill to
+       their active states. Calling setSlide(0) just resets the
+       sentinel — no DOM thrash if we land on slide 0 fresh. */
+    setSlide(0);
+
+    /* ─── ScrollTrigger — pin + snap (no auto-advance) ─── */
+    scrollTrigger = ScrollTrigger.create({
+      trigger: section,
+      pin: true,
+      pinSpacing: true,
+      anticipatePin: 1,
+      start: "top top",
+      end: `+=${lastSlideIdx * 100}%`,
+      invalidateOnRefresh: true,
+      snap: reduceMotion
+        ? undefined
+        : {
+            snapTo: (value, self) => {
+              const idx = value * lastSlideIdx;
+              const velocity = self?.getVelocity?.() ?? 0;
+              /* Same threshold About uses — a gentle flick commits
+                 in the scroll direction; below 50, round to nearest. */
+              const target =
+                Math.abs(velocity) > 50
+                  ? velocity > 0
+                    ? Math.ceil(idx)
+                    : Math.floor(idx)
+                  : Math.round(idx);
+              return Math.max(0, Math.min(lastSlideIdx, target)) / lastSlideIdx;
+            },
+            duration: { min: 0.2, max: 0.5 },
+            delay: 0.08,
+            ease: "power3.out",
+          },
+      onEnter: () => startMachine(),
+      onEnterBack: () => startMachine(),
+      onLeave: () => stopMachine(),
+      onLeaveBack: () => stopMachine(),
+      onUpdate: (self) => {
+        const idx = Math.max(
+          0,
+          Math.min(lastSlideIdx, Math.round(self.progress * lastSlideIdx))
+        );
+        setSlide(idx);
+      },
+    });
+
+    /* ─── Hide the docked video player while SPAR owns the screen ───
+       SPAR has its own bottom-center caption, which would clash with the
+       site-wide docked player. The player's hide rules (Header.astro) react
+       to data-hide-spar, set here in sync with SPAR's pin range. */
+    const videoDockTrigger = ScrollTrigger.create({
+      trigger: section,
+      start: "top bottom",
+      end: `+=${(slideCount + 1) * 100}%`,
+      onToggle: (self) => {
+        if (self.isActive) {
+          videoDock?.setAttribute("data-hide-spar", "");
+        } else {
+          videoDock?.removeAttribute("data-hide-spar");
+        }
+      },
+    });
+
+    /* ─── Initial-state safety net ───
+       If the page loads with scroll restoration positioning the user
+       INSIDE the pin range (refresh on `#spar`), onEnter doesn't fire.
+       Sync running state after each refresh. */
+    const syncInitialState = (): void => {
+      if (!scrollTrigger) return;
+      if (scrollTrigger.isActive && !running) startMachine();
+      if (videoDockTrigger.isActive) {
+        videoDock?.setAttribute("data-hide-spar", "");
+      } else {
+        videoDock?.removeAttribute("data-hide-spar");
+      }
+    };
+    ScrollTrigger.addEventListener("refreshInit", syncInitialState);
+    ScrollTrigger.addEventListener("refresh", syncInitialState);
+    syncInitialState();
+  }
+</script>

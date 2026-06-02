@@ -1,0 +1,2001 @@
+---
+/**
+ * Header.astro — hero section (Figma node 771:13832)
+ *
+ * Assets used (in `public/bg/`):
+ *   public/bg/seq/00.avif … 49.avif         — scroll-driven background sequence
+ *     (50 AVIF frames @ 2000×1334, evenly sampled from the 5s @ 24fps source).
+ *     Decoded once into ImageBitmaps and drawn to a canvas on every
+ *     ScrollTrigger tick. Temporal cross-fade between consecutive frames
+ *     (alpha = fractional part of progress * (N-1)) eliminates the
+ *     "staircase" effect — the 50 source frames read as ~60fps smooth.
+ *   public/bg/hero-bg-poster.jpg            — JPEG q3 (1920×1280, downscaled from the original 6K render) — first-paint fallback before frames load
+ *   public/bg/video-placeholder.jpg         — placeholder image inside the "How it works" widget
+ *
+ * NOTE: the HEVC/WebM video files (hero-bg-hevc.mp4 / hero-bg.webm) are no longer
+ * referenced by this component — the autoplay loop was replaced with a scroll-
+ * scrubbed AVIF sequence. Reverse scroll reverses the animation automatically.
+ *
+ * Loading sequence (page is silently scroll-locked until ready):
+ *   1. LQIP (~320 bytes base64 in CSS) renders the moment HTML parses —
+ *      blurred + grayscale + pulsing per skeleton convention. This is
+ *      the ONLY loading visual — no full-overlay on top.
+ *   2. Static poster PNG (~140KB) loaded eagerly, fades in on `decode()`.
+ *   3. Site scroll is locked (body overflow hidden + touch-action none)
+ *      while the 50 AVIFs decode into ImageBitmaps. No visual signal —
+ *      the LQIP pulse already communicates that something's loading.
+ *   4. All bitmaps ready → canvas fades in, scroll unlocks, the
+ *      ScrollTrigger drives frame sequence + video-widget exit.
+ *   5. On `prefers-reduced-motion` / `connection.saveData` / 2g connections,
+ *      the canvas layer is removed entirely and the poster stays final —
+ *      scroll is never locked in that case.
+ *
+ * Effects:
+ *   - "Intelligence" is an inline SVG with Geist Latin (woff2) embedded as base64 inside
+ *     `@font-face` in the SVG's <defs><style>. The font travels with the SVG so it
+ *     renders identically across Chrome/Safari/Firefox, no webfont-load timing.
+ *     Text is real <text> — editable, accessible (aria-label), no path outlines.
+ *   - Liquid-glass on CTA + play button uses an inline SVG filter (`#lg-dist`).
+ *   - Video widget sinks 20% below the viewport bottom (translateY 20%).
+ */
+import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
+---
+
+<header class="hero">
+  {/* Hidden SVG defs — liquid-glass displacement filter.
+      Pattern adapted from promotion.admirals.com/zero: turbulence → blur the noise →
+      displace SourceGraphic. The Gaussian blur on the noise field is what makes the
+      distortion look liquid/smooth instead of pixelated. */}
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      {/* Recipe from liquid-glass-80d9b5.webflow.io — adds gamma-mapped channels
+          + specular lighting for proper 3D glass highlights, not just displacement */}
+      {/* Tuned 2026-05-21 to remove pixelation/edge artifacts visible on smaller
+          pills (the nav pill is 50px tall, the Hero CTA is ~34px tall).
+          - scale 140 → 60: displacement amplitude was bigger than the element on
+            small pills, which is what produced the spike/notch artifacts at the
+            rounded corners. 60 keeps the liquid feel but stays inside the box.
+          - stdDeviation 3 → 5: smoother noise field reduces blockiness at edges.
+          - filter region 0/100% → -10/120%: gives feDisplacementMap room to sample
+            past the bbox so it doesn't clamp on the right edge — that clamp was
+            visible as a thin "sliver/notch" on the navbar pill at certain
+            viewport widths. The pill's overflow:hidden + border-radius does the
+            final clip cleanly, so extending the filter region is safe. */}
+      <filter id="lg-dist" x="-10%" y="-10%" width="120%" height="120%" filterUnits="objectBoundingBox">
+        <feTurbulence type="fractalNoise" baseFrequency="0.01 0.01" numOctaves="1" seed="5" result="turbulence" />
+        <feComponentTransfer in="turbulence" result="mapped">
+          <feFuncR type="gamma" amplitude="1" exponent="10" offset="0.5" />
+          <feFuncG type="gamma" amplitude="0" exponent="1" offset="0" />
+          <feFuncB type="gamma" amplitude="0" exponent="1" offset="0.5" />
+        </feComponentTransfer>
+        <feGaussianBlur in="turbulence" stdDeviation="5" result="softMap" />
+        <feSpecularLighting in="softMap" surfaceScale="5" specularConstant="1" specularExponent="100" lighting-color="white" result="specLight">
+          <fePointLight x="-200" y="-200" z="300" />
+        </feSpecularLighting>
+        <feComposite in="specLight" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="litImage" />
+        <feDisplacementMap in="SourceGraphic" in2="softMap" scale="60" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      <filter id="lg-dist-sm" x="-10%" y="-10%" width="120%" height="120%" filterUnits="objectBoundingBox">
+        <feTurbulence type="fractalNoise" baseFrequency="0.02 0.02" numOctaves="1" seed="14" result="turbulence" />
+        <feComponentTransfer in="turbulence" result="mapped">
+          <feFuncR type="gamma" amplitude="1" exponent="10" offset="0.5" />
+          <feFuncG type="gamma" amplitude="0" exponent="1" offset="0" />
+          <feFuncB type="gamma" amplitude="0" exponent="1" offset="0.5" />
+        </feComponentTransfer>
+        <feGaussianBlur in="turbulence" stdDeviation="2" result="softMap" />
+        <feSpecularLighting in="softMap" surfaceScale="4" specularConstant="1" specularExponent="100" lighting-color="white" result="specLight">
+          <fePointLight x="-100" y="-100" z="200" />
+        </feSpecularLighting>
+        <feComposite in="specLight" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="litImage" />
+        <feDisplacementMap in="SourceGraphic" in2="softMap" scale="60" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+
+      {/* Play-shape clipPath — used by CSS `clip-path: url(#play-clip)` on HTML elements.
+          Path coords pre-scaled to 0–1 (divided by 44 × 46) so we can use
+          clipPathUnits="objectBoundingBox" without a transform attribute. */}
+      <clipPath id="play-clip" clipPathUnits="objectBoundingBox">
+        <path d="M0 0.8642V0.0860C0 0.0219 0.0708 -0.0197 0.1306 0.0095L0.9217 0.3953C1.0206 0.4435 1.0206 0.5786 0.9217 0.6268L0.1975 0.9799C0.1071 1.0240 0 0.9612 0 0.8642Z" />
+      </clipPath>
+    </defs>
+  </svg>
+
+  {/* Background — layered: gradient fallback (deepest), static poster (skeleton),
+      video (fades in when ready), vignette overlay on top. */}
+  <div class="hero__bg" aria-hidden="true">
+    <div class="hero__bg-fallback"></div>
+    <img
+      class="hero__bg-poster"
+      src="/bg/hero-bg-poster.jpg"
+      alt=""
+      loading="eager"
+      decoding="async"
+      fetchpriority="high"
+    />
+    {/* Scroll-driven background — JS preloads /bg/seq/00…24.avif, calls
+        createImageBitmap() on each (forces decode + gives a GPU-friendly
+        handle), then GSAP ScrollTrigger drives ctx.drawImage on this
+        canvas per scroll tick. Drawing a pre-decoded bitmap is sub-ms
+        and synchronous, so the flicker that came with swapping
+        background-image URLs is gone. Reverse-scroll reverses progress
+        and therefore the frame index. On reduced-motion / saveData / 2g
+        the canvas is removed and the poster underneath stays as the
+        final state. */}
+    <canvas class="hero__bg-canvas" aria-hidden="true"></canvas>
+    <div class="hero__bg-vignette"></div>
+  </div>
+
+
+  {/* CTA — direct child of .hero so it can be position:absolute relative to hero
+      on both desktop (top-right) and mobile (right side, near subtitle). */}
+  <div class="hero__cta-top liquid">
+    <div class="liquid__filter" aria-hidden="true"></div>
+    <div class="liquid__overlay" aria-hidden="true"></div>
+    <div class="liquid__specular" aria-hidden="true"></div>
+    <a class="liquid__content hero__cta-top-link" href="#briefing">
+      {/* Hard-mask hover swap: original lifts up, duplicate slides in from
+          below. aria-hidden on the dup so screen readers read once. Pattern
+          per rule #18 + button convention in @docs/frontend-conventions.md. */}
+      <span class="hero__cta-top-label">
+        <span class="hero__cta-top-label-text" data-text="default">Request a briefing</span>
+        <span class="hero__cta-top-label-text" data-text="hover" aria-hidden="true">Request a briefing</span>
+      </span>
+    </a>
+  </div>
+
+  {/* Editorial split headline + subtitle.
+      "Agentic" / "decision" are separate spans so the mobile design can stack
+      them on individual lines with editorial right-offset on "decision". */}
+  <div class="hero__title-block">
+    <h1 class="hero__title">
+      <span class="hero__title-line-1"><span class="hero__title-word">Agentic</span> <span class="hero__title-word hero__title-word--offset">decision</span></span>
+      <div class="hero__title-line-2" set:html={intelligenceSVG} />
+    </h1>
+    <p class="hero__subtitle">
+      The decision infrastructure for the cities of tomorrow
+    </p>
+  </div>
+
+  {/* In-flow reserved slot for the docked video player. The actual player
+      is the position:fixed `.hero__video` rendered AFTER </header> (outside
+      the hero's isolated stacking context). This slot:
+        • reserves the player's big footprint so the hero title rhythm
+          doesn't shift when the player leaves grid flow,
+        • shows a static poster fallback so the hero looks complete before
+          the dock's JS initialises (prevents a mini-at-bottom flash),
+        • is the FLIP target the morph scales the dock UP to at p=0.
+      The "How it works" label lives here (in-flow in the hero) and just
+      fades on scroll; its hover→"Play" swap is driven by JS (the frame now
+      lives in a separate subtree, so :has() can't reach across). */}
+  <div class="hero__video-slot">
+    <p class="hero__video-label" aria-hidden="true">
+      <span class="hero__video-label-mask">
+        <span class="hero__video-label-text" data-text="default">How it works</span>
+        <span class="hero__video-label-text" data-text="hover">Play</span>
+      </span>
+    </p>
+    <div class="hero__video-slot-box" aria-hidden="true">
+      <img
+        class="hero__video-slot-poster"
+        src="/bg/video-placeholder.jpg"
+        alt=""
+        loading="eager"
+        decoding="async"
+      />
+    </div>
+  </div>
+
+  {/* ── Video modal ─────────────────────────────────────────────────────────
+      Opens when .hero__video-thumb is clicked. Uses native HTML <dialog> for
+      built-in Escape-to-close, focus trap, and ::backdrop styling. The backdrop
+      blurs the page behind it. Click outside the video → close. Click on video
+      → toggle play/pause. Custom cursor renders the affordance text. */}
+  <dialog class="video-modal" aria-label="Introduction video">
+    {/* Real <video> element. Currently a 5-second still loop of the placeholder
+        image (generated via ffmpeg from video-placeholder.jpg) — stands in until
+        the real intro video is produced. Sources are HEVC (Safari) + VP9 webm. */}
+    <video
+      class="video-modal__player"
+      poster="/bg/video-placeholder.jpg"
+      playsinline
+      preload="metadata"
+    >
+      <source src="/bg/intro-loop-hevc.mp4" type="video/mp4; codecs=hvc1" />
+      <source src="/bg/intro-loop.webm" type="video/webm" />
+    </video>
+    {/* Pixel-thin progress bar at the top of the modal — driven by
+        video.timeupdate. Like vshslv.com /stories. */}
+    <div class="video-modal__progress" aria-hidden="true">
+      <div class="video-modal__progress-fill"></div>
+    </div>
+    {/* Custom cursor lives INSIDE <dialog> so it shares the same top layer —
+        otherwise the dialog's ::backdrop covers it. */}
+    <div class="custom-cursor" aria-hidden="true">
+      <div class="custom-cursor__pill">
+        {/* Hard mask = exactly one line-height tall. Spans stack in the
+            same grid cell; transitions are translateY only (mask clips). */}
+        <div class="custom-cursor__mask">
+          <span class="custom-cursor__text" data-text="close">Close</span>
+          <span class="custom-cursor__text" data-text="play">Play</span>
+          <span class="custom-cursor__text" data-text="pause">Pause</span>
+        </div>
+      </div>
+    </div>
+  </dialog>
+</header>
+
+{/* ── Docked video player ──────────────────────────────────────────────
+    Rendered OUTSIDE <header> on purpose: it's position:fixed and must float
+    above every section across the whole site. It can't live inside .hero
+    (which is `isolation: isolate` + `overflow: hidden`) — a fixed child
+    there is z-trapped behind later sections. Class prefix stays
+    `hero__video*` (it's still the hero's player, just docked) so the modal
+    FLIP + click handlers keep keying off these names.
+
+    Two nested transforms that never fight:
+      • outer .hero__video       → hide state (CSS-transitioned translateY),
+        toggled by data-hide-up / data-hide-spar / data-hide-footer.
+      • inner .hero__video-morph → scroll-morph (JS sets transform): at hero
+        progress 0 it scales up to overlay .hero__video-slot-box; at
+        progress 1 it's identity = the docked mini player.
+    Starts hidden (no data-ready) and is revealed by JS after the first morph
+    measurement, so there's never a mini-at-bottom flash on load. */}
+<figure class="hero__video">
+  <div class="hero__video-morph">
+    <div class="hero__video-frame">
+      <button class="hero__video-thumb" type="button" aria-label="Play introduction video">
+        <img
+          class="hero__video-poster"
+          src="/bg/video-placeholder.jpg"
+          alt=""
+          loading="eager"
+          fetchpriority="high"
+          decoding="async"
+        />
+        <span class="hero__video-poster-fallback" aria-hidden="true"></span>
+      </button>
+      <div class="hero__video-play" aria-hidden="true">
+        <div class="hero__video-play-glass liquid liquid--sm">
+          <div class="liquid__filter"></div>
+          <div class="liquid__overlay"></div>
+        </div>
+        <svg class="hero__video-play-rim" viewBox="0 0 44 46" overflow="visible" aria-hidden="true">
+          <path
+            d="M0 39.7529V3.9562C0 1.00559 3.11678 -0.903911 5.7455 0.436217L40.5568 18.1832C44.9058 20.4003 44.9058 26.614 40.5568 28.8311L8.69008 45.0769C4.71415 47.1039 0 44.2157 0 39.7529Z"
+            fill="none"
+            stroke="rgba(255, 255, 255, 0.45)"
+            stroke-width="1"
+            stroke-linejoin="round"
+            vector-effect="non-scaling-stroke"
+          />
+        </svg>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<style>
+  /* =================================================================
+     HERO CONTAINER — grid layout, 100svh, liquid responsive
+     Grid handles CTA / title / video placement. Background layers + button
+     internals remain position:absolute (decorative overlays, not layout). */
+  .hero {
+    position: relative;
+    inline-size: 100%;
+    min-block-size: 100svh;
+    overflow: hidden;
+    isolation: isolate;
+    background-color: var(--color-bg);
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto 1fr auto;
+    grid-template-areas:
+      "cta"
+      "."
+      "title"
+      "."
+      "video";
+    padding-inline: var(--page-padding);
+  }
+
+  /* Hidden filter defs */
+  .hero__filters {
+    position: absolute;
+    inline-size: 0;
+    block-size: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  /* =================================================================
+     BACKGROUND — video + poster + fallback gradient
+     ================================================================= */
+  .hero__bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+  }
+
+  /* Deepest layer — LQIP (Low Quality Image Placeholder, ~320 bytes inline as base64).
+     Visible the instant HTML renders — zero network round-trip. Scaled up + blurred
+     + desaturated so it reads as a B&W skeleton preview (per site-wide convention:
+     all loading states are grayscale). Pulses while we wait for the poster + video. */
+  .hero__bg-fallback {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-color: var(--color-bg);
+    background-image: url("data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYyLjI4LjEwMQD/2wBDAAgYGBwYHCEhISEhISckJygoKCcnJycoKCgrKyszMzMrKysoKCsrMDAzMzc5NzQ0MzQ5OTw8PEhIRUVUVFdnZ3z/xABdAAEAAwEAAAAAAAAAAAAAAAAEAQUHBgEBAQAAAAAAAAAAAAAAAAAAAgMQAAEEAgEFAQAAAAAAAAAAAAIBABESkUEDBBPBcVExEQEBAAAAAAAAAAAAAAAAAAAAIf/AABEIABAAGAMBIgACEQADEQD/2gAMAwEAAhEDEQA/AMChp7a1tqYaB5a6HCO+XqlIEBKR8UR/ceXWBXIQ4bi5FXQ4hnt6YJ//2Q==");
+    background-size: cover;
+    background-position: center;
+    /* grayscale → B&W per skeleton convention. blur → hide LQIP pixelation.
+       transform:scale → hide blur edge artifacts. */
+    filter: grayscale(1) blur(28px);
+    transform: scale(1.08);
+    animation: hero-bg-pulse 2s ease-in-out infinite;
+  }
+
+  /* When the video starts playing, the deep skeleton stops pulsing (it's hidden anyway) */
+  .hero__bg[data-video-ready] .hero__bg-fallback {
+    animation: none;
+  }
+
+  /* Full-resolution poster — loads as a normal image. Hidden until its `load`
+     event fires, then fades in over the LQIP. Stays visible behind the video
+     until the video reveals itself, so transitions never flash. */
+  .hero__bg-poster {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    object-position: center;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.6s ease-out;
+  }
+
+  .hero__bg[data-poster-ready] .hero__bg-poster {
+    opacity: 1;
+  }
+
+  /* Scroll-driven frame surface — replaces the autoplay loop. JS paints
+     the current frame's pre-decoded ImageBitmap into this canvas on every
+     ScrollTrigger tick via ctx.drawImage. The first frame is painted only
+     after every bitmap is ready (createImageBitmap resolved); until then
+     the canvas stays at opacity:0 and the poster underneath shows through.
+     Cover-fit cropping is done in JS (drawImage's destination rect math),
+     so layout/visual parity with the previous `object-fit: cover` video. */
+  .hero__bg-canvas {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    z-index: 2;
+    background-color: var(--color-bg);
+    opacity: 0;
+    transition: opacity 0.8s ease-out;
+  }
+
+  .hero__bg[data-video-ready] .hero__bg-canvas {
+    opacity: 1;
+  }
+
+  .hero__bg-vignette {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    /* Two stacked gradients (drawn front-to-back as listed):
+       1. Radial ellipse — soft rounded-corner vignette so the video's
+          edges fade to bg color and blend with the page surround. Kept
+          gentle (35% alpha at the corners, transparent through the
+          inner 60%) — just enough to bleed into --color-bg without
+          turning the hero into a tunnel.
+       2. Linear top/bottom — existing scrim, keeps the title/CTA
+          legible against bright video frames. */
+    background:
+      radial-gradient(
+        ellipse 75% 90% at 50% 50%,
+        transparent 55%,
+        rgba(1, 1, 1, 0.55) 100%
+      ),
+      linear-gradient(
+        to bottom,
+        rgba(1, 1, 1, 0.15) 0%,
+        transparent 30%,
+        transparent 55%,
+        rgba(1, 1, 1, 0.55) 80%,
+        rgba(1, 1, 1, 0.92) 95%,
+        var(--color-bg) 100%
+      );
+    pointer-events: none;
+  }
+
+  @keyframes hero-bg-pulse {
+    0%, 100% { opacity: 0.7; }
+    50%      { opacity: 1; }
+  }
+
+
+  /* Site-wide skeleton convention: grayscale shimmer for loading states */
+  @keyframes skeleton-shimmer {
+    0%   { background-position: 200% 0, 0 0; }
+    100% { background-position: -200% 0, 0 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero__bg-fallback,
+    .hero__video-poster-fallback {
+      animation: none;
+    }
+  }
+
+  /* Liquid glass recipe (.liquid / .liquid__filter / .liquid__overlay /
+     .liquid__specular / .liquid__content) lives in src/styles/global.css.
+     The SVG filter defs (#lg-dist, #lg-dist-sm) referenced by .liquid__filter
+     are defined further down in this file inside the hero <svg> defs block
+     and shared across all .liquid surfaces on the page. */
+
+  /* =================================================================
+     TOP-RIGHT CTA (liquid wrapper sized + positioned, content holds padding)
+     ================================================================= */
+  .hero__cta-top {
+    grid-area: cta;
+    justify-self: end;
+    align-self: start;
+    margin-block-start: var(--space-2xs);
+    z-index: 30;
+    border-radius: var(--radius-pill);
+    transition: transform var(--dur-hover) var(--ease-out-soft);
+  }
+  .hero__cta-top:hover {
+    /* Hover lift in rem — at 4K the design is 2× so a 1px lift is invisible.
+       0.0625rem = 1px at baseline, 2px at 2× root scaling. */
+    transform: translateY(-0.0625rem);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero__cta-top {
+      transition: none;
+    }
+  }
+  .hero__cta-top:active {
+    transform: translateY(0);
+  }
+  .hero__cta-top:has(.liquid__content:focus-visible) {
+    outline: 2px solid var(--color-fg);
+    outline-offset: 4px;
+  }
+  /* Inner link handles its own focus — but visual ring shows on the wrapper above */
+  .hero__cta-top-link {
+    padding-block: var(--space-2xs);
+    padding-inline: var(--space-xs);
+  }
+  .hero__cta-top-link:focus-visible {
+    outline: none; /* delegated to .hero__cta-top */
+  }
+
+  /* Button label IS the hard mask — saves an extra wrapper. Same pattern
+     as .hero__video-label-mask: overflow:hidden box sized to one line,
+     text spans stack via grid, translateY only on hover.
+     Per rule #18 — hover swap is the default button-text behavior. */
+  .hero__cta-top-label {
+    display: inline-grid;
+    grid-template-areas: "stack";
+    overflow: hidden;
+    vertical-align: bottom;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug);
+    font-weight: 400;
+    block-size: calc(var(--text-xs) * var(--leading-snug));
+  }
+
+  .hero__cta-top-label-text {
+    grid-area: stack;
+    white-space: nowrap;
+    transition: transform var(--dur-hover) var(--ease-out-soft);
+  }
+
+  /* Default state: original visible at translateY(0), duplicate parked below */
+  .hero__cta-top-label-text[data-text="default"] {
+    transform: translateY(0);
+  }
+  .hero__cta-top-label-text[data-text="hover"] {
+    transform: translateY(100%);
+  }
+
+  @media (hover: hover) {
+    .hero__cta-top:hover .hero__cta-top-label-text[data-text="default"] {
+      transform: translateY(-100%);
+    }
+    .hero__cta-top:hover .hero__cta-top-label-text[data-text="hover"] {
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero__cta-top-label-text {
+      transition: none;
+    }
+  }
+
+  /* =================================================================
+     EDITORIAL SPLIT HEADLINE
+     ================================================================= */
+  /* Title block — grid item in the centered row, max-width capped at 1198px.
+     On mobile, dissolves via `display: contents` (see media query) so its
+     children (h1, subtitle) become direct grid items of .hero — allowing
+     subtitle + CTA to share a row. */
+  .hero__title-block {
+    grid-area: title;
+    justify-self: center;
+    align-self: center;
+    inline-size: min(74.875rem, 100%);
+    /* One max-content column = the width of the widest line ("Agentic
+       decision"). Intelligence + subtitle right-align to that column edge, so
+       all three right edges sit on ONE vertical baseline — and because the
+       column is font-sized (not a %-of-screen indent), the baseline never
+       wanders or overflows as the viewport changes. justify-content:start keeps
+       "Agentic" pinned to the block's inline-start. Mirror of .footer__title-block. */
+    display: grid;
+    grid-template-columns: max-content;
+    justify-content: start;
+    /* SVG box height = --text-display × 0.875, width per the ink-tight
+       822.097×160 viewBox (Figma's right-side blur padding trimmed off), so
+       box-inline-end === the last glyph's ink edge → right-aligns flush. */
+    --intel-width: calc(var(--text-display) * 0.875 * 822.097 / 160);
+    /* Sub-pixel optical pull-in so the round "e" / pointed "w" sit on the
+       baseline rather than poking past it. Tuned by eye. */
+    --intel-edge-nudge: 0.012em;
+    --caption-edge-nudge: 0.19em;
+  }
+
+
+  .hero__title {
+    position: relative;
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--text-display);
+    line-height: 0.83;
+    letter-spacing: -0.055em;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .hero__title-line-1 {
+    color: var(--color-fg);
+    white-space: nowrap;
+    /* Thin outline stroke on top of the white fill — adds a touch of
+       weight to the glyphs without bumping the font-weight (which would
+       change rhythm). 1px is a fixed component-internal value, allowed
+       per the project's "no fixed px for layout" rule (strokes are the
+       exception). */
+    -webkit-text-stroke: 1px var(--color-fg);
+  }
+
+  /* Word spans inside line-1 — flow inline on desktop ("Agentic decision"),
+     stack as block items on mobile with editorial right-offset on "decision". */
+  .hero__title-word {
+    display: inline;
+  }
+
+  /* Line 2 wraps an inlined Figma SVG. Keeps its own size (0.875×) and
+     right-aligns inside the h1 flex column, so its ink edge lands flush on the
+     headline's right baseline. Left indent is whatever's left over — the
+     editorial "offset down and right" of the ghost word. */
+  .hero__title-line-2 {
+    display: block;
+    align-self: flex-end;
+    inline-size: var(--intel-width);
+    block-size: calc(var(--text-display) * 0.875);
+    margin-inline-end: var(--intel-edge-nudge);
+    overflow: visible;
+  }
+
+
+  /* Subtitle — text-aligned to the END so its right edge sits on the same
+     vertical baseline as the headline + Intelligence, at every viewport width. */
+  .hero__subtitle {
+    /* Shrink the content box (not a margin — a margin can't move text inside a
+       100%-wide box) so text-align:end lands the "w" ink on the baseline. */
+    inline-size: calc(100% - var(--caption-edge-nudge));
+    text-align: end;
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    line-height: 1.2;
+    color: var(--color-fg);
+    opacity: 0.7;
+    white-space: nowrap;
+  }
+
+  /* =================================================================
+     "HOW IT WORKS" VIDEO WIDGET — sinks 20% below viewport bottom
+     ================================================================= */
+  /* ── Docked video player (the morphing "How it works" player) ──────────
+     `.hero__video` is the OUTER, viewport-fixed dock. Its resting size is
+     the MINI player parked bottom-center; the scroll morph (JS, on the
+     inner `.hero__video-morph`) scales it UP to overlay the in-flow
+     `.hero__video-slot-box` at hero progress 0. The outer owns ONLY the
+     hide/reveal transform so it never fights the inner morph transform. */
+  .hero__video {
+    position: fixed;
+    inset-block-end: var(--space-md);
+    inset-inline-start: 50%;
+    /* Below the navbar (z 99) and the modal (<dialog> top layer), above all
+       page sections. Matches the old mini pill's layer. */
+    z-index: 15;
+    margin: 0;
+    /* Docked (visible) state. Hidden until JS reveals it (data-ready) so
+       there's no mini-at-bottom flash before the first morph measurement. */
+    transform: translate(-50%, 0);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      transform var(--dur-morph) var(--ease-morph),
+      opacity var(--dur-morph) var(--ease-morph);
+    will-change: transform, opacity;
+  }
+
+  .hero__video[data-ready] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Hidden states — scrolling up below the hero, over About, over SPAR, or at
+     the footer. Any one parks the dock below the fold + fades it. Listed after
+     [data-ready] so they win when both apply (equal specificity → later source
+     order wins). */
+  .hero__video[data-hide-up],
+  .hero__video[data-hide-about],
+  .hero__video[data-hide-spar],
+  .hero__video[data-hide-footer] {
+    transform: translate(-50%, 140%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* Inner morph layer — JS sets `transform: translate(...) scale(...)` per
+     scroll tick. No CSS transition: it's scroll-scrubbed (the hero
+     ScrollTrigger's scrub provides the smoothing). */
+  .hero__video-morph {
+    display: block;
+    transform-origin: center center;
+    will-change: transform;
+  }
+
+  /* Subtle lift on hover — the dock's affordance (same language as the old
+     widget). Composes with the docked translate. Only fires when ready +
+     not hidden (a hidden dock has pointer-events:none, so it can't hover). */
+  @media (hover: hover) {
+    .hero__video[data-ready]:hover {
+      transform: translate(-50%, -0.25rem);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero__video {
+      transition: opacity 0.2s linear;
+    }
+  }
+
+  /* ── In-flow hero slot — reserves the big player's footprint so the hero
+        title rhythm doesn't shift, holds the label, and is the FLIP
+        measurement target the dock scales up to. ────────────────────────── */
+  .hero__video-slot {
+    grid-area: video;
+    justify-self: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .hero__video-slot-box {
+    position: relative;
+    inline-size: clamp(17.5rem, 35vw, 31rem); /* 280–496px — the BIG size */
+    aspect-ratio: 496 / 270;
+    border-radius: var(--radius-tile);
+    overflow: hidden;
+    /* Poster fallback shown until the dock reveals (data-ready on the slot),
+       so the hero reads as complete before JS runs. */
+    opacity: 1;
+    transition: opacity var(--dur-morph) var(--ease-morph);
+  }
+
+  .hero__video-slot[data-ready] .hero__video-slot-box {
+    opacity: 0;
+  }
+
+  .hero__video-slot-poster {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    border-radius: inherit;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero__video-slot-box {
+      transition: opacity 0.2s linear;
+    }
+  }
+
+  .hero__video-label {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--color-fg);
+    opacity: 0.7;
+    text-align: center;
+  }
+
+  /* HARD MASK PATTERN — overflow:hidden box, sized to exactly one line-height.
+     Spans stack in the same grid cell; translateY clears them through the
+     mask edges. No opacity transitions: the mask does the clipping. */
+  .hero__video-label-mask {
+    display: inline-grid;
+    grid-template-areas: "stack";
+    overflow: hidden;
+    vertical-align: bottom;
+    /* font-size × line-height = one line, exact */
+    block-size: calc(var(--text-sm) * var(--leading-snug));
+  }
+
+  .hero__video-label-text {
+    grid-area: stack;
+    display: block;
+    white-space: nowrap;
+    /* Synced with poster + play scale below — same dur + easing tokens */
+    transition: transform var(--dur-hover) var(--ease-out-soft);
+  }
+
+  /* Default state: "How it works" visible at translateY(0), "Play" parked below */
+  .hero__video-label-text[data-text="default"] {
+    transform: translateY(0);
+  }
+  .hero__video-label-text[data-text="hover"] {
+    transform: translateY(100%);
+  }
+
+  /* Hover swap is JS-driven now: the dock frame lives in a separate subtree
+     from this label, so :has() can't reach across. A pointerenter/leave on
+     the frame toggles [data-video-hover] on .hero (see the dock script). */
+  @media (hover: hover) {
+    .hero[data-video-hover] .hero__video-label-text[data-text="default"] {
+      transform: translateY(-100%);
+    }
+    .hero[data-video-hover] .hero__video-label-text[data-text="hover"] {
+      transform: translateY(0);
+    }
+  }
+
+  /* Scroll-driven label vanish. Set by Header's GSAP onUpdate when
+     hero scroll progress crosses 50% — kicks the label out before the
+     widget itself has fully sunk. Same translateY mechanic as the
+     hover swap, so the CSS transition on .hero__video-label-text
+     handles the easing. */
+  .hero[data-video-label-hidden] .hero__video-label-text[data-text="default"] {
+    transform: translateY(-100%);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero__video-label-text {
+      transition: none;
+    }
+  }
+
+  /* Frame wraps the button + the play sibling, so the play visual can sit OUTSIDE
+     the button's isolation context (otherwise backdrop-filter inside play gets
+     sandboxed by the button's stacking context). */
+  /* The frame's BASE size is the docked MINI player; the morph scales it up to
+     the slot box. aspect-ratio matches the slot box (496/270) so the scale is
+     uniform. No shadow/radius on the frame itself — the original large player
+     had none (the poster carries the radius), so the big state stays identical
+     to the original. */
+  .hero__video-frame {
+    position: relative;
+    inline-size: clamp(8rem, 14vw, 11rem); /* MINI — docked size; morph scales up */
+    aspect-ratio: 496 / 270;
+  }
+
+  .hero__video-thumb {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    padding: 0;
+    /* Counter-scale the radius against the morph so the corners keep a CONSTANT
+       visual size. Without this, the morph's transform magnifies the radius
+       (~2.5x at the big state → corners look far rounder than the docked mini).
+       --morph-sc is the live morph scale, set per-frame by the dock script. */
+    border-radius: calc(var(--radius-tile) / var(--morph-sc, 1));
+    overflow: hidden;
+    cursor: pointer;
+    background: transparent;
+  }
+
+  /* Default state — image is slightly oversized inside its frame (5% over).
+     Frame clips it via border-radius + overflow:hidden on the parent thumb.
+     On hover the image "settles" back to natural fit (scale 1) — feels like
+     the widget gently invites the click. */
+  .hero__video-poster {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    border-radius: calc(var(--radius-tile) / var(--morph-sc, 1));
+    z-index: 1;
+    opacity: 0;
+    transform-origin: center;
+    transform: scale(1.05);
+    /* Initial reveal stays on ease-out; hover scale uses the synced token */
+    transition:
+      opacity 0.6s ease-out,
+      transform var(--dur-hover) var(--ease-out-soft);
+  }
+
+  .hero__video-poster[data-ready] {
+    opacity: 1;
+  }
+
+  @media (hover: hover) {
+    .hero__video-frame:hover .hero__video-poster[data-ready] {
+      transform: scale(1);
+    }
+  }
+
+  /* B&W skeleton — shimmer until the poster image decodes (skeleton convention). */
+  .hero__video-poster-fallback {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: calc(var(--radius-tile) / var(--morph-sc, 1));
+    background:
+      linear-gradient(
+        110deg,
+        rgba(255, 255, 255, 0.04) 25%,
+        rgba(255, 255, 255, 0.12) 50%,
+        rgba(255, 255, 255, 0.04) 75%
+      ),
+      rgba(255, 255, 255, 0.03);
+    background-size: 200% 100%, auto;
+    animation: skeleton-shimmer 1.8s ease-in-out infinite;
+  }
+
+  /* Once the poster image has decoded, kill the shimmer underneath even
+     though the poster covers it visually. CSS @keyframes on hidden-by-
+     overlay elements still cost style/composite work every tick. */
+  .hero__video-poster[data-ready] + .hero__video-poster-fallback {
+    animation: none;
+  }
+
+  /* Play button — wrapper (positioned), glass (clipped to play shape with backdrop-filter),
+     and rim (sibling SVG drawing the 1px stroke on top, not clipped).
+     NOTE: no `filter: drop-shadow()` on this wrapper — ancestor filters can break
+     descendant backdrop-filter capture in Chrome. Shadow lives on the rim SVG instead. */
+  .hero__video-play {
+    position: absolute;
+    inset-inline-start: 50%;
+    inset-block-start: 50%;
+    /* Native original size (40px). A uniform morph would scale the play with
+       the frame — bloating the big state and distorting the liquid-glass
+       (backdrop-filter sampled at base size, then magnified). Instead the dock
+       script counter-scales via --play-counter so the play renders at a
+       constant NATIVE size: 2.5rem at the big hero state (pixel-identical to
+       the original large player), easing to the original 1.75rem at the docked
+       mini. transform stays un-transitioned because --play-counter is
+       scroll-scrubbed in lockstep with the morph. */
+    --play-counter: 1;
+    transform: translate(-50%, -50%) scale(var(--play-counter));
+    inline-size: 2.5rem; /* 40px */
+    block-size: auto;
+    aspect-ratio: 44 / 46;
+    z-index: 2;
+    display: block;
+    pointer-events: none;
+  }
+
+  /* The liquid-glass plate. Clip-path is on the LEAF layers (filter + overlay),
+     not on this wrapper. Reason: when a parent has clip-path, Chrome's
+     backdrop-filter inside the child sees the parent's empty stacking context
+     instead of the real document backdrop. Putting clip-path on the same
+     element as backdrop-filter works because the backdrop is captured BEFORE
+     the output is clipped. */
+  .hero__video-play-glass {
+    position: absolute;
+    inset: 0;
+    display: block;
+  }
+
+  .hero__video-play-glass > .liquid__filter,
+  .hero__video-play-glass > .liquid__overlay {
+    clip-path: polygon(
+      0% 8%,
+      14% 0%,
+      96% 41%,
+      100% 50%,
+      96% 59%,
+      14% 100%,
+      0% 92%
+    );
+    -webkit-clip-path: polygon(
+      0% 8%,
+      14% 0%,
+      96% 41%,
+      100% 50%,
+      96% 59%,
+      14% 100%,
+      0% 92%
+    );
+  }
+
+  /* Rim stroke — sibling SVG drawn on top, NOT clipped, so the 1px outline isn't cut off.
+     drop-shadow lives here (not on the wrapper) so it doesn't interfere with
+     backdrop-filter capture in the liquid glass below. */
+  .hero__video-play-rim {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    overflow: visible;
+    pointer-events: none;
+    filter: drop-shadow(0 0.25rem 0.75rem rgba(0, 0, 0, 0.45));
+  }
+
+  /* =================================================================
+     RESPONSIVE TWEAKS
+     ================================================================= */
+  /* Mobile layout per Figma node 778:21962 — pure grid:
+     - title-block dissolves via display:contents so h1 + subtitle become direct grid items
+     - Row template: top-spacer, title (h1), subtitle | cta, mid-spacer, video
+     - Subtitle constrained to 180px (Figma) so it wraps to ~3 lines */
+  @media (max-width: 40em) {
+    .hero {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: 28svh auto auto 1fr auto;
+      grid-template-areas:
+        ".        ."
+        "title    title"
+        "subtitle cta"
+        ".        ."
+        "video    video";
+    }
+    .hero__title-block {
+      display: contents;
+      --intel-width: 100%;
+      /* No shared right-edge column on mobile — each line stacks full-width. */
+      --intel-edge-nudge: 0px;
+      --caption-edge-nudge: 0px;
+    }
+    .hero__title {
+      grid-area: title;
+      justify-self: start;
+      inline-size: 100%;
+    }
+    /* Each title word on its own line, "decision" right-aligned via flex column */
+    .hero__title-line-1 {
+      display: flex;
+      flex-direction: column;
+      white-space: normal;
+    }
+    .hero__title-word {
+      display: block;
+    }
+    .hero__title-word--offset {
+      align-self: flex-end;
+    }
+    .hero__title-line-2 {
+      align-self: stretch;
+      inline-size: 100%;
+      max-inline-size: 100%;
+    }
+    /* Subtitle: own grid cell, 180px wide (Figma) */
+    .hero__subtitle {
+      grid-area: subtitle;
+      justify-self: start;
+      align-self: start;
+      margin-inline-start: 0;
+      inline-size: 11.25rem;   /* 180px */
+      max-inline-size: 11.25rem;
+      text-align: start;
+      white-space: normal;
+    }
+    /* CTA: own grid cell next to subtitle, right-aligned */
+    .hero__cta-top {
+      grid-area: cta;
+      justify-self: end;
+      align-self: start;
+      margin-block-start: 0;
+    }
+    /* Mobile: no "How it works" label. The slot reserves the Figma ~290px
+       big footprint (matches the nav pill width); the docked dock stays
+       compact. The morph scale is computed live, so it adapts to these. */
+    .hero__video-label {
+      display: none;
+    }
+    .hero__video-slot {
+      justify-self: stretch;
+    }
+    .hero__video-slot-box {
+      inline-size: 100%;
+      max-inline-size: 18.125rem; /* 290px — matches nav pill */
+      margin-inline: auto;
+    }
+    .hero__video-frame {
+      inline-size: clamp(7rem, 26vw, 9rem); /* docked mini, mobile */
+    }
+  }
+
+  /* =================================================================
+     REDUCED MOTION — hide the scroll-driven frame layer for accessibility.
+     The static poster underneath stays as the final hero background.
+     ================================================================= */
+  @media (prefers-reduced-motion: reduce) {
+    .hero__bg-canvas {
+      display: none;
+    }
+    .hero__bg-poster {
+      animation: none;
+    }
+  }
+
+  /* =================================================================
+     VIDEO MODAL
+     Native <dialog> with backdrop-filter blur. Centered video, 16:9.
+     ================================================================= */
+
+  /* Base reset only — DO NOT set `display` here. UA styles apply `display:none`
+     to `dialog:not([open])`; setting display on the base selector would override
+     that and leave the modal stuck visible. */
+  .video-modal {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-fg);
+  }
+
+  /* All layout rules live on `[open]` so the dialog only paints when shown.
+     Two-row grid: thin progress bar at the top, video centered in the
+     remaining space. `place-items: center` only applies to children that
+     don't override their own placement. */
+  .video-modal[open] {
+    position: fixed;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    max-inline-size: 100%;
+    max-block-size: 100%;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "progress"
+      "video";
+    place-items: center;
+    cursor: pointer; /* system pointer stays visible; pill follows alongside */
+  }
+
+  /* Backdrop animates in via @starting-style (Chrome 117+, Safari 17.5+, FF 129+).
+     Older browsers get instant blur — acceptable fallback. */
+  .video-modal::backdrop {
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    transition:
+      background 0.55s var(--ease-morph),
+      backdrop-filter 0.55s var(--ease-morph),
+      -webkit-backdrop-filter 0.55s var(--ease-morph);
+  }
+
+  @starting-style {
+    .video-modal[open]::backdrop {
+      background: rgba(0, 0, 0, 0);
+      backdrop-filter: blur(0) saturate(100%);
+      -webkit-backdrop-filter: blur(0) saturate(100%);
+    }
+  }
+
+  /* Closing class — set by JS just before .close() to animate the backdrop away */
+  .video-modal.is-closing::backdrop {
+    background: rgba(0, 0, 0, 0);
+    backdrop-filter: blur(0) saturate(100%);
+    -webkit-backdrop-filter: blur(0) saturate(100%);
+  }
+
+  .video-modal__player {
+    grid-area: video;
+    inline-size: min(90vw, 1280px);
+    aspect-ratio: 16 / 9;
+    block-size: auto;
+    max-block-size: 85dvh;
+    border-radius: var(--radius-lg);
+    background: black;
+    box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.5);
+    object-fit: cover;
+    transform-origin: center;
+    transition: transform var(--dur-morph) var(--ease-morph);
+  }
+
+  /* Close uses the faster morph token — feels like the widget "snaps back" */
+  .video-modal.is-closing .video-modal__player {
+    transition: transform var(--dur-morph-fast) var(--ease-morph);
+  }
+
+  /* =================================================================
+     PROGRESS BAR — thin white pixel line at the top of the modal.
+     Lives in the dialog's grid (top row), JS-driven scaleX(0 → 1) on the
+     fill. Sits in the top layer (inside <dialog>) so it's never clipped
+     or blurred by the backdrop-filter. */
+  .video-modal__progress {
+    grid-area: progress;
+    justify-self: stretch;
+    align-self: start;
+    inline-size: 100%;
+    block-size: 1px;
+    background: rgba(255, 255, 255, 0.18);
+    pointer-events: none;
+    opacity: 0;
+    /* Delayed reveal — waits 0.25s for the morph-in to settle, then fades. */
+    transition: opacity var(--dur-morph-fast) var(--ease-morph) 0.25s;
+  }
+
+  /* Reveal once the morph-in has settled (JS adds [data-armed] after open) */
+  .video-modal[open] .video-modal__progress[data-armed] {
+    opacity: 1;
+  }
+
+  /* Hide instantly when closing — no trailing flicker over the morph-out */
+  .video-modal.is-closing .video-modal__progress {
+    opacity: 0;
+    transition: opacity 0.12s ease-out;
+  }
+
+  .video-modal__progress-fill {
+    block-size: 100%;
+    inline-size: 100%;
+    background: var(--color-fg);
+    transform-origin: left center;
+    transform: scaleX(0);
+    /* Short ease so the fill stays in sync with the video clock without
+       feeling laggy — JS writes scaleX every `timeupdate`. */
+    transition: transform 0.18s linear;
+  }
+
+  /* When the morph is opening, the thumb's play visual fades out so the
+     widget feels like it's transforming into the modal (rather than ghosting). */
+  .hero__video-frame.is-morphing .hero__video-play {
+    opacity: 0;
+    transition: opacity var(--dur-morph-fast) var(--ease-morph);
+  }
+
+  /* =================================================================
+     CUSTOM CURSOR (visible while the modal is open, pointer:fine only)
+     Magnetic follow via lerp in script. Text swaps via stacked translateY.
+     ================================================================= */
+  .custom-cursor {
+    position: fixed;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0s linear 0.2s;
+    /* JS writes translate3d(x, y, 0) with a -50% offset for centering */
+    will-change: transform;
+  }
+
+  .custom-cursor[data-active] {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.2s ease;
+  }
+
+  .custom-cursor__pill {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 5rem;
+    padding-block: 0.625rem;
+    padding-inline: 1.125rem;
+    border-radius: 999rem;
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(10px) saturate(140%);
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    /* Pill sits TOP-RIGHT of the pointer arrow.
+       X: +offset → pill is right of pointer.
+       Y: -100% (pill's own height) − gap → pill bottom edge is above pointer. */
+    transform: translate(
+      var(--cursor-pill-offset-x, 1rem),
+      calc(-100% + var(--cursor-pill-offset-y, -0.5rem))
+    );
+  }
+
+  /* HARD MASK — same pattern as .hero__video-label-mask: overflow:hidden
+     wrapper, block-size = one line-height. translateY only.
+
+     line-height: var(--leading-snug) (1.3), NOT 1 — otherwise descenders
+     on letters like `y` (in "Play") get sliced by the mask edge. The label
+     above uses the same multiplier for the same reason. */
+  .custom-cursor__mask {
+    display: grid;
+    grid-template-areas: "stack";
+    justify-items: center;
+    overflow: hidden;
+    block-size: calc(var(--text-xs) * var(--leading-snug));
+  }
+
+  .custom-cursor__text {
+    grid-area: stack;
+    display: block;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug);
+    color: var(--color-fg);
+    white-space: nowrap;
+    /* Parked below the mask until activated. translateY only — no opacity.
+       Synced with hero-label easing so all text swaps feel mechanically alike. */
+    transform: translateY(100%);
+    transition: transform var(--dur-hover) var(--ease-out-soft);
+  }
+
+  /* Active state — slides up into the mask */
+  .custom-cursor[data-state="close"] .custom-cursor__text[data-text="close"],
+  .custom-cursor[data-state="play"]  .custom-cursor__text[data-text="play"],
+  .custom-cursor[data-state="pause"] .custom-cursor__text[data-text="pause"] {
+    transform: translateY(0);
+  }
+
+  /* Non-active states sit ABOVE the mask so the next change slides "up and away" */
+  .custom-cursor[data-state="close"] .custom-cursor__text[data-text="play"],
+  .custom-cursor[data-state="close"] .custom-cursor__text[data-text="pause"],
+  .custom-cursor[data-state="play"]  .custom-cursor__text[data-text="close"],
+  .custom-cursor[data-state="play"]  .custom-cursor__text[data-text="pause"],
+  .custom-cursor[data-state="pause"] .custom-cursor__text[data-text="close"],
+  .custom-cursor[data-state="pause"] .custom-cursor__text[data-text="play"] {
+    transform: translateY(-100%);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .custom-cursor__text {
+      transition: none;
+    }
+  }
+
+  /* Touch / no-pointer devices: never show the custom cursor */
+  @media (hover: none), (pointer: coarse) {
+    .custom-cursor {
+      display: none;
+    }
+    .video-modal[open] {
+      cursor: auto; /* let the system cursor (or finger) work */
+    }
+  }
+</style>
+
+<style is:global>
+  /* Safari fallback — the foreignObject backdrop-blur fill inside the
+     Intelligence SVG paints at offset coordinates in WebKit (known bug).
+     Hiding the foreignObjects leaves the visible letter paths intact at
+     fill-opacity 0.7, which still reads as ghost text without the glass
+     fill. `data-safari` is set on <html> by an inline detector in
+     BaseLayout (runs before first paint, no FOUC).
+     Marked is:global because the html-level [data-safari] selector + the
+     unscoped foreignObject children inside set:html SVG content both live
+     outside Astro's scoped-style hashing. */
+  [data-safari] .hero__title-line-2 foreignObject {
+    display: none;
+  }
+  /* Lighten Chrome's blurred letter fills — the per-letter <foreignObject>
+     div has only inline `backdrop-filter: blur(7.5px)`, so the blurred slab
+     covers the dark page background and reads heavier than Safari's outline-
+     only treatment. Adding a soft white wash inside lifts the perceived
+     brightness across the whole word without removing the glass effect. */
+  .hero__title-line-2 foreignObject > div {
+    background-color: rgba(255, 255, 255, 0.07);
+  }
+</style>
+
+<script>
+  import { detectMediaPrefs } from "../lib/mediaPrefs";
+  import { revealOnDecode } from "../lib/revealOnDecode";
+
+  /**
+   * Progressive background loading:
+   *   LQIP (instant, inline base64 in CSS) → poster PNG (fades in on `load`)
+   *   → AVIF frame sequence (fades in once every frame is decoded into an
+   *   ImageBitmap; thereafter GSAP ScrollTrigger drives ctx.drawImage on
+   *   the .hero__bg-canvas as a function of scroll progress over the hero).
+   *
+   * Smart behavior:
+   * 1. Save-Data / 2g connections / prefers-reduced-motion → drop the
+   *    canvas layer entirely, poster stays as the final image (no metered
+   *    data spent on 25 × ~500KB AVIFs).
+   * 2. Poster `load` event → reveal the sharp full-resolution image over the LQIP.
+   * 3. All bitmaps ready → fade canvas in on top of the poster.
+   * 4. Errors at any layer leave the previous layer visible — never blank.
+   * 5. Reverse scroll automatically reverses the animation (lower
+   *    ScrollTrigger.progress → earlier frame index).
+   * 6. createImageBitmap pre-decodes each frame and stores the GPU handle
+   *    in JS memory, so per-tick paint is sub-ms and synchronous — no
+   *    flicker between frames (which the previous background-image swap
+   *    did when the browser dropped+re-decoded bitmaps mid-scroll).
+   */
+  const bg = document.querySelector<HTMLDivElement>(".hero__bg");
+  const poster = bg?.querySelector<HTMLImageElement>(".hero__bg-poster");
+  const canvas = bg?.querySelector<HTMLCanvasElement>(".hero__bg-canvas");
+
+  if (bg && poster) {
+    revealOnDecode(poster, () => bg.setAttribute("data-poster-ready", "true"));
+  }
+
+  // Reveal the "How it works" video widget thumbnail on `load` (NOT
+  // img.decode()). The poster starts at opacity:0 waiting for the
+  // data-ready flip — Chromium parks decode() on invisible elements
+  // and the promise never resolves, leaving the skeleton stuck.
+  // Plain `load` works because the asset is small (~30 KB JPG) and
+  // paints in one frame, no risk of half-decoded reveal.
+  const videoPoster = document.querySelector<HTMLImageElement>(".hero__video-poster");
+  if (videoPoster) {
+    const markReady = () => videoPoster.setAttribute("data-ready", "true");
+    if (videoPoster.complete && videoPoster.naturalWidth > 0) markReady();
+    else {
+      videoPoster.addEventListener("load", markReady, { once: true });
+      videoPoster.addEventListener("error", markReady, { once: true });
+    }
+  }
+
+  if (bg && canvas) {
+    const { slowConnection, reduceMotion: reducedMotion } = detectMediaPrefs();
+    const hero = document.querySelector<HTMLElement>(".hero");
+
+    /* Scroll lock — html+body `overflow: hidden` + `touch-action: none`
+       holds the page at scroll 0 while the AVIF sequence decodes. Lenis
+       on top of this is harmless: with no scrollable area, lenis.raf()
+       does nothing visible. We don't poll for window.__lenis here because
+       the native overflow lock is already authoritative — Lenis can't
+       create scroll where the browser says there is none. */
+    const lockScroll = () => {
+      /* scrollTo(0,0) first — guard against browser scroll restoration
+         landing the user mid-page on reload. Pin needs scroll position
+         to start at 0 for the hero start:"top top" trigger to fire
+         correctly when the user begins scrolling. */
+      window.scrollTo(0, 0);
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.touchAction = "none";
+    };
+    const unlockScroll = () => {
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+      document.documentElement.style.touchAction = "";
+      /* Belt-and-braces. If the user opened the page and walked away
+         during the AVIF decode window, the idle tracker (BaseLayout)
+         fires at 8s and calls lenis.stop(). We re-`start()` so the
+         next wheel tick scrolls without waiting for an axion:active
+         event. Plus .resize() so Lenis's cached scroll bounds are
+         re-read now that the page is no longer overflow:hidden.
+         Safe no-op if Lenis isn't there (saveData / reduced-motion). */
+      const lenis = (window as unknown as {
+        __lenis?: { resize: () => void; start: () => void };
+      }).__lenis;
+      lenis?.resize();
+      lenis?.start();
+    };
+
+    /* FRAMES + drawFrame live in the outer scope so the always-on morph
+       ScrollTrigger (created after this if/else) can drive the frame sequence
+       too. drawFrame stays null on reduced-motion / saveData (canvas removed)
+       — onUpdate calls it optionally. */
+    const FRAMES = 50;
+    let drawFrame: ((rawIdx: number) => void) | null = null;
+
+    if (slowConnection || reducedMotion) {
+      // Drop the canvas layer entirely. Poster underneath becomes the final hero image.
+      canvas.remove();
+    } else {
+      // Lock the page until every AVIF is decoded into an ImageBitmap.
+      // Without this lock the user can scroll past the hero before the
+      // unified ScrollTrigger is created, never seeing the sequence at all.
+      lockScroll();
+      /* ---- Scroll-driven AVIF frame sequence ------------------------
+         Previous version swapped backgroundImage on a div — that
+         flickered between black and the image during fast scrolls
+         because the browser dropped+re-decoded each frame's bitmap on
+         every swap. Fix: decode every frame ONCE via createImageBitmap
+         (returns a GPU-friendly handle), store the ImageBitmaps in JS
+         memory, and on each ScrollTrigger tick paint to a <canvas> via
+         ctx.drawImage. drawImage(ImageBitmap) is sub-ms and synchronous
+         — no decode, no flash.
+
+         Bitmap memory: we resize at decode time to ~1920 wide (the
+         largest dimension the hero canvas paints at on a 2× retina
+         display). That caps GPU memory at ~250MB total across 25
+         bitmaps while still future-proofing against very-high-DPR
+         displays. Lower-DPR devices get the same source AVIF but use
+         less VRAM.
+
+         Reverse scroll = lower ScrollTrigger.progress = earlier bitmap
+         index. The "mirror animation" on scroll-up is intrinsic to the
+         scrub — no extra code.
+
+         drawFrame() short-circuits when the rounded index hasn't changed
+         since the previous tick, so most ticks do zero work. */
+      const urls = Array.from(
+        { length: FRAMES },
+        (_, i) => `/bg/seq/${String(i).padStart(2, "0")}.avif`
+      );
+      const images = urls.map(url => {
+        const img = new Image();
+        img.src = url;
+        return img;
+      });
+      const bitmaps: (ImageBitmap | null)[] = new Array(FRAMES).fill(null);
+
+      /* bitmapsReady gate — flipped to true once Promise.all(prepAll)
+         resolves. The pinned ScrollTrigger is created SYNCHRONOUSLY
+         below (in parallel with bitmap decoding), so it's registered
+         before About/SPAR run their refresh cycles. drawFrame() reads
+         this gate and no-ops until bitmaps are decoded — pin engages,
+         scroll lock holds the user, canvas stays empty (poster shows
+         through) until ready. */
+      let bitmapsReady = false;
+
+      const ctx = canvas.getContext("2d", { alpha: false });
+      let currentIdx0 = -1;
+      let currentT = -1;
+
+      /* Temporal-blend draw — same trick Apple's product pages use for
+         scroll sequences. Instead of snapping to Math.round(idx) (which
+         steps through 50 discrete frames and reads as a staircase on
+         fast scrolls), we draw frame[floor(idx)] at full alpha, then
+         draw frame[ceil(idx)] on top at alpha = fractional part. The
+         compositor cross-fades the two, so a 50-frame source reads as
+         smooth at any framerate.
+
+         drawImage with globalAlpha is a single GPU composite op per
+         layer — sub-ms work. The short-circuit below skips redraws
+         when neither the base frame nor the blend ratio has moved
+         enough to be visible (0.5% threshold). */
+      drawFrame = (rawIdx: number) => {
+        if (!ctx) return;
+        /* No-op until bitmaps are decoded. ScrollTrigger may fire
+           onUpdate before bitmaps[] is populated; we silently skip
+           those calls. The first real draw lands in the
+           Promise.all(prepAll).then() block below when bitmapsReady
+           flips. */
+        if (!bitmapsReady) return;
+        const clamped = Math.max(0, Math.min(FRAMES - 1, rawIdx));
+        const i0 = Math.floor(clamped);
+        const i1 = Math.min(FRAMES - 1, i0 + 1);
+        const t = clamped - i0;
+        if (i0 === currentIdx0 && Math.abs(t - currentT) < 0.005) return;
+        const bm0 = bitmaps[i0];
+        if (!bm0) return;
+        currentIdx0 = i0;
+        currentT = t;
+        const cw = canvas.width, ch = canvas.height;
+        const paint = (bm: ImageBitmap, alpha: number) => {
+          ctx.globalAlpha = alpha;
+          // Cover-fit: scale to fill the canvas, center-cropped on whichever
+          // axis overflows. Matches the previous `object-fit: cover` /
+          // `background-size: cover` behavior.
+          const scale = Math.max(cw / bm.width, ch / bm.height);
+          const w = bm.width * scale;
+          const h = bm.height * scale;
+          ctx.drawImage(bm, (cw - w) / 2, (ch - h) / 2, w, h);
+        };
+        paint(bm0, 1);
+        const bm1 = bitmaps[i1];
+        if (t > 0.001 && bm1 && bm1 !== bm0) paint(bm1, t);
+        ctx.globalAlpha = 1;
+      };
+
+      const sizeCanvas = () => {
+        // Cap DPR at 2: above that the file would push GPU memory past
+        // a useful return, and the source AVIF is 3528×2352 anyway.
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const rect = canvas.getBoundingClientRect();
+        const w = Math.max(1, Math.round(rect.width * dpr));
+        const h = Math.max(1, Math.round(rect.height * dpr));
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+          // Force redraw at new canvas size — currentIdx0 becomes stale
+          // because canvas was cleared by the resize.
+          const stale = currentIdx0 + currentT;
+          currentIdx0 = -1;
+          currentT = -1;
+          if (stale >= 0) drawFrame?.(stale);
+        }
+      };
+
+      // Preload every image, then createImageBitmap each to force decode
+      // and get GPU-friendly handles. resizeWidth caps in-memory bitmap
+      // dimension so 25 native-res frames don't blow past 1GB of GPU mem.
+      const TARGET_W = 1920;
+      const prepAll = images.map((img, i) =>
+        new Promise<void>(res => {
+          const ok = () => {
+            createImageBitmap(img, {
+              resizeWidth: TARGET_W,
+              resizeQuality: "high",
+            })
+              .then(bm => {
+                bitmaps[i] = bm;
+                res();
+              })
+              .catch(() => res()); // a failed bitmap leaves bitmaps[i]=null; drawFrame skips it cleanly
+          };
+          if (img.complete && img.naturalWidth > 0) ok();
+          else {
+            img.addEventListener("load", ok, { once: true });
+            img.addEventListener("error", () => res(), { once: true });
+          }
+        })
+      );
+
+      /* Bitmap decode (parallel). The player's morph + dock controllers were
+         moved OUT of this else branch into the always-on block after the
+         if/else, so the morph still runs on reduced-motion / saveData where
+         the frame sequence is skipped. When all frames decode, flip
+         bitmapsReady so drawFrame paints, reveal the canvas, unlock scroll. */
+      Promise.all(prepAll).then(() => {
+        sizeCanvas();
+        bitmapsReady = true;
+        drawFrame?.(0);
+        bg.setAttribute("data-video-ready", "true");
+
+        // Re-fit on resize. Listener uses requestAnimationFrame coalescing
+        // so a window-drag doesn't queue 60 sizeCanvas calls per second.
+        let rafId = 0;
+        const onResize = () => {
+          cancelAnimationFrame(rafId);
+          rafId = requestAnimationFrame(sizeCanvas);
+        };
+        window.addEventListener("resize", onResize, { passive: true });
+
+        unlockScroll();
+      });
+    }
+
+    /* ─────────── Docked player — morph + dock controllers ───────────
+       ALWAYS created (even on reduced-motion / saveData, where the frame
+       sequence is skipped) because it drives the player's morph, not just
+       the canvas. Created synchronously once gsap+ST resolve, in the same
+       microtask round as About/SPAR — and every trigger here is PINLESS, so
+       none adds a pin-spacer that could disturb their cached pin geometry
+       (see the hero-pin-coordination note). The final
+       ScrollTrigger.refresh(true) re-measures everything once registered. */
+    (async () => {
+      const [{ gsap }, { ScrollTrigger }, { ensureLenisBridge }] = await Promise.all([
+        import("gsap"),
+        import("gsap/ScrollTrigger"),
+        import("../lib/scrollBridge"),
+      ]);
+      gsap.registerPlugin(ScrollTrigger);
+      ensureLenisBridge(ScrollTrigger);
+
+      const dock = document.querySelector<HTMLElement>(".hero__video");
+      const morphEl = dock?.querySelector<HTMLElement>(".hero__video-morph");
+      const slotEl = hero?.querySelector<HTMLElement>(".hero__video-slot");
+      const slotBox = hero?.querySelector<HTMLElement>(".hero__video-slot-box");
+      const frameEl = dock?.querySelector<HTMLElement>(".hero__video-frame");
+      const playEl = dock?.querySelector<HTMLElement>(".hero__video-play");
+
+      /* FLIP metrics — the delta that maps the docked MINI frame onto the big
+         in-flow slot box, in DOCUMENT coords (the slot scrolls, the dock is
+         fixed) so it's scroll-position-independent and stable to cache.
+         Re-measured on every refresh (resize / breakpoint swap). */
+      const m = { dx: 0, dy: 0, scale: 1 };
+      let heroEnd = window.innerHeight;
+      let revealed = false;
+
+      const measureMorph = (): void => {
+        if (!dock || !morphEl || !slotBox || !frameEl) return;
+        /* Neutralise the inner morph + any outer hide so the frame reports
+           its TRUE docked rect. Synchronous — no paint happens between the
+           mutate and the restore, so there's no visible flash. */
+        const prevMorphT = morphEl.style.transform;
+        const prevTrans = dock.style.transition;
+        const hideUp = dock.hasAttribute("data-hide-up");
+        const hideSpar = dock.hasAttribute("data-hide-spar");
+        const hideFooter = dock.hasAttribute("data-hide-footer");
+        dock.style.transition = "none";
+        dock.removeAttribute("data-hide-up");
+        dock.removeAttribute("data-hide-spar");
+        dock.removeAttribute("data-hide-footer");
+        morphEl.style.transform = "none";
+
+        const f = frameEl.getBoundingClientRect();
+        const s = slotBox.getBoundingClientRect();
+        const scrollY = window.scrollY;
+        // Guard against a zero-width measurement (collapsed/transient layout):
+        // a 0 here would make sc=0 → --play-counter=Infinity → broken transform.
+        m.scale = f.width && s.width ? s.width / f.width : 1;
+        m.dx = s.left + s.width / 2 - (f.left + f.width / 2);
+        m.dy = s.top + scrollY + s.height / 2 - (f.top + f.height / 2);
+
+        morphEl.style.transform = prevMorphT;
+        if (hideUp) dock.setAttribute("data-hide-up", "");
+        if (hideSpar) dock.setAttribute("data-hide-spar", "");
+        if (hideFooter) dock.setAttribute("data-hide-footer", "");
+        requestAnimationFrame(() => {
+          dock.style.transition = prevTrans;
+        });
+      };
+
+      const applyMorph = (p: number): void => {
+        if (!morphEl) return;
+        let prog = p < 0 ? 0 : p > 1 ? 1 : p;
+        // Reduced motion: no scroll-linked scaling — snap big↔mini at the midpoint.
+        if (reducedMotion) prog = prog < 0.5 ? 0 : 1;
+        const inv = 1 - prog;
+        const sc = 1 + (m.scale - 1) * inv;
+        morphEl.style.transform = `translate(${m.dx * inv}px, ${m.dy * inv}px) scale(${sc})`;
+        /* Expose the live morph scale so descendants (corner radius) can
+           counter-scale and keep a constant visual size through the morph. */
+        morphEl.style.setProperty("--morph-sc", String(sc));
+        /* Counter-scale the play so it renders at a constant NATIVE size:
+           at the big state sc=S → counter=1/S → net ×1 (original 2.5rem, no
+           glass distortion); at the docked mini → 0.7× (original 1.75rem). */
+        if (playEl) {
+          const ratio = 1 - 0.3 * prog; // 1 (big) → 0.7 (mini)
+          playEl.style.setProperty("--play-counter", String(ratio / sc));
+        }
+      };
+
+      ScrollTrigger.create({
+        trigger: ".hero",
+        start: "top top",
+        /* PINLESS — see hero-pin-coordination note. Adds no pin-spacer, so
+           About/SPAR keep their cached geometry. Do NOT add pin/anticipatePin. */
+        end: "bottom top",
+        invalidateOnRefresh: true,
+        scrub: reducedMotion ? true : 0.15,
+        onRefresh(self) {
+          measureMorph();
+          heroEnd = self.end || window.innerHeight;
+          applyMorph(self.progress);
+          /* Reveal the dock + fade out the slot's poster fallback once the
+             morph is measured + applied, so the player never flashes at its
+             docked mini position on load. */
+          if (!revealed) {
+            revealed = true;
+            dock?.setAttribute("data-ready", "");
+            slotEl?.setAttribute("data-ready", "");
+          }
+        },
+        onUpdate(self) {
+          const p = self.progress;
+          drawFrame?.(p * (FRAMES - 1)); // no-op on reduced-motion (canvas gone)
+          applyMorph(p);
+          if (hero) {
+            if (p > 0.01) hero.setAttribute("data-video-label-hidden", "");
+            else hero.removeAttribute("data-video-label-hidden");
+          }
+          /* In the hero (morph) zone the morph owns visibility — never let
+             the scroll-up auto-hide park the player here. */
+          if (dock && p < 1) dock.removeAttribute("data-hide-up");
+        },
+      });
+
+      /* Auto-hide on scroll-up below the hero. Observer ST spanning the whole
+         document (no pin, no trigger element → adds no spacer). At/above
+         heroEnd the morph owns the player; below it, scrolling up parks it,
+         scrolling down brings it back. */
+      if (dock) {
+        ScrollTrigger.create({
+          start: 0,
+          end: () => ScrollTrigger.maxScroll(window),
+          invalidateOnRefresh: true,
+          onUpdate(self) {
+            if (self.scroll() <= heroEnd) {
+              dock.removeAttribute("data-hide-up");
+              return;
+            }
+            if (self.direction === -1) dock.setAttribute("data-hide-up", "");
+            else dock.removeAttribute("data-hide-up");
+          },
+        });
+
+        /* Hide over the About section — the docked mini shouldn't overlap
+           About's pinned gallery. About is pinned; this observer adds no pin
+           (no spacer), it just toggles the hide across About's natural range:
+           from its top reaching the viewport top (hero morph just finished)
+           until its bottom leaves the top (Features begins). */
+        ScrollTrigger.create({
+          trigger: ".about",
+          start: "top top",
+          end: "bottom top",
+          onToggle: (self) => {
+            if (self.isActive) dock.setAttribute("data-hide-about", "");
+            else dock.removeAttribute("data-hide-about");
+          },
+        });
+
+        /* Hide at the footer — the dock shouldn't float over the footer's
+           own bottom-center content (year / legal row) as it scrolls in.
+           `top bottom` fires the moment the footer begins to enter, parking
+           the dock below the fold; scrolling back up restores it over FAQ. */
+        ScrollTrigger.create({
+          trigger: ".footer",
+          start: "top bottom",
+          onEnter: () => dock.setAttribute("data-hide-footer", ""),
+          onLeaveBack: () => dock.removeAttribute("data-hide-footer"),
+        });
+      }
+
+      /* Label hover swap ("How it works" ↔ "Play"). The frame lives in a
+         separate subtree from the label, so :has() can't cross — drive it
+         with pointer events that toggle [data-video-hover] on .hero. */
+      if (frameEl && hero && window.matchMedia("(hover: hover)").matches) {
+        frameEl.addEventListener("pointerenter", () =>
+          hero.setAttribute("data-video-hover", "")
+        );
+        frameEl.addEventListener("pointerleave", () =>
+          hero.removeAttribute("data-video-hover")
+        );
+      }
+
+      ScrollTrigger.refresh(true);
+    })();
+  }
+
+  /* ===== Video modal + custom magnetic cursor ====================== */
+
+  const modal = document.querySelector<HTMLDialogElement>(".video-modal");
+  const modalVideo = modal?.querySelector<HTMLVideoElement>(".video-modal__player");
+  const thumbButton = document.querySelector<HTMLButtonElement>(".hero__video-thumb");
+  const cursor = document.querySelector<HTMLElement>(".custom-cursor");
+  const progressBar = modal?.querySelector<HTMLElement>(".video-modal__progress");
+  const progressFill = modal?.querySelector<HTMLElement>(".video-modal__progress-fill");
+
+  /* ---- Modal open / close — FLIP morph from thumb to fullscreen ---
+     Pattern adapted from https://github.com/vshslv/vshslv-site (stories modal):
+     compute non-uniform translate+scale that maps the inner element to the
+     trigger's bounding rect, apply it with `transition: none`, force reflow,
+     then clear it — CSS transitions animate to identity. Close runs in reverse
+     with a faster easing class and finalizes on `transitionend`. */
+  const thumbFrame = document.querySelector<HTMLDivElement>(".hero__video-frame");
+
+  /** Compute FLIP delta from `inner` (natural) to `trigger` (target). */
+  const flipRect = (
+    inner: HTMLElement,
+    trigger: HTMLElement
+  ): { dx: number; dy: number; sx: number; sy: number } | null => {
+    const t = inner.getBoundingClientRect();
+    const s = trigger.getBoundingClientRect();
+    if (!s.width || !s.height || !t.width || !t.height) return null;
+    return {
+      dx: s.left + s.width / 2 - (t.left + t.width / 2),
+      dy: s.top + s.height / 2 - (t.top + t.height / 2),
+      sx: s.width / t.width,
+      sy: s.height / t.height,
+    };
+  };
+
+  let morphing = false;
+
+  /* ---- Progress bar ----------------------------------------------
+     Mirrors vshslv `_barSync`: ratio = currentTime / duration, write the
+     fill's scaleX. Stays in [0, 1] and ignores NaN/Infinity durations.
+
+     Note on `transform`: stylelint's logical-properties rule bans the
+     longhand `top/left/width/height` but `transform: scaleX()` is fine. */
+  const syncProgress = () => {
+    if (!modalVideo || !progressFill) return;
+    const duration = modalVideo.duration;
+    if (!duration || !Number.isFinite(duration)) return;
+    const ratio = Math.min(1, Math.max(0, modalVideo.currentTime / duration));
+    progressFill.style.transform = `scaleX(${ratio})`;
+  };
+
+  const resetProgress = () => {
+    if (!progressFill) return;
+    progressFill.style.transition = "none";
+    progressFill.style.transform = "scaleX(0)";
+    // Force a frame so the next CSS transition picks up cleanly
+    void progressFill.offsetWidth;
+    progressFill.style.transition = "";
+  };
+
+  const openWithMorph = () => {
+    if (!modal || !modalVideo || !thumbFrame) return;
+    if (morphing || modal.open) return;
+    morphing = true;
+
+    thumbFrame.classList.add("is-morphing"); // fades the play visual
+    modal.showModal();
+
+    // Wait one frame so the modal is in the top layer (correct measurement)
+    requestAnimationFrame(() => {
+      const rect = flipRect(modalVideo, thumbFrame);
+      if (rect) {
+        // Apply FROM-state instantly (no transition)
+        modalVideo.style.transition = "none";
+        modalVideo.style.transform = `translate(${rect.dx}px, ${rect.dy}px) scale(${rect.sx}, ${rect.sy})`;
+        // Force reflow so the next change animates
+        void modalVideo.offsetWidth;
+        // Restore CSS transition + clear transform → animates to identity
+        modalVideo.style.transition = "";
+        modalVideo.style.transform = "";
+      }
+      // Settle the morph, arm the progress bar (fades in via CSS), THEN
+      // hold a decorative micro-pause before play() — vshslv stories-style.
+      // Reads as a beat between "video has landed" and "video begins."
+      const MORPH_MS = 720;
+      const MICRO_PAUSE_MS = 320;
+
+      window.setTimeout(() => {
+        morphing = false;
+        progressBar?.setAttribute("data-armed", "");
+
+        window.setTimeout(() => {
+          // play() may reject under strict autoplay policy — silently swallow,
+          // the click that opened the modal already qualifies as a user gesture
+          void modalVideo.play().catch(() => {});
+        }, MICRO_PAUSE_MS);
+      }, MORPH_MS);
+    });
+  };
+
+  const closeWithMorph = () => {
+    if (!modal || !modalVideo || !thumbFrame) return;
+    if (morphing || !modal.open) return;
+    morphing = true;
+
+    // Pause + rewind first — feels like the widget snaps back to a fresh state
+    modalVideo.pause();
+    modalVideo.currentTime = 0;
+    resetProgress();
+    progressBar?.removeAttribute("data-armed");
+
+    const rect = flipRect(modalVideo, thumbFrame);
+    // Block any further clicks during close
+    modal.style.pointerEvents = "none";
+
+    const finalize = () => {
+      modalVideo.removeEventListener("transitionend", onEnd);
+      modalVideo.style.transition = "none";
+      modalVideo.style.transform = "";
+      void modalVideo.offsetWidth;
+      modalVideo.style.transition = "";
+      modal.classList.remove("is-closing");
+      modal.style.pointerEvents = "";
+      modal.close();
+      thumbFrame.classList.remove("is-morphing");
+      morphing = false;
+    };
+
+    const onEnd = (event: TransitionEvent) => {
+      // Only react to the transform transition (other props may animate too)
+      if (event.propertyName !== "transform") return;
+      finalize();
+    };
+
+    if (rect) {
+      modal.classList.add("is-closing"); // switches to fast easing
+      modalVideo.addEventListener("transitionend", onEnd);
+      // Faster CSS transition kicks in (.is-closing override)
+      modalVideo.style.transform = `translate(${rect.dx}px, ${rect.dy}px) scale(${rect.sx}, ${rect.sy})`;
+      // Safety net: if transitionend never fires (interrupted / hidden tab)
+      window.setTimeout(finalize, 500);
+    } else {
+      finalize();
+    }
+  };
+
+  if (modal && modalVideo && thumbButton) {
+    thumbButton.addEventListener("click", openWithMorph);
+
+    // Click target decides what happens:
+    //   - on the video itself  → toggle play/pause
+    //   - anywhere else inside → close (empty area = close zone)
+    modal.addEventListener("click", (event) => {
+      const target = event.target as Node;
+      if (modalVideo.contains(target) || target === modalVideo) {
+        if (modalVideo.paused) {
+          void modalVideo.play().catch(() => {});
+        } else {
+          modalVideo.pause();
+        }
+      } else {
+        closeWithMorph();
+      }
+    });
+
+    // Escape key — prevent native close, run morph instead
+    modal.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeWithMorph();
+    });
+
+    // Progress bar drivers
+    modalVideo.addEventListener("timeupdate", syncProgress);
+    modalVideo.addEventListener("loadedmetadata", syncProgress);
+    // When playback ends, sit at 100% briefly then close. Feels intentional
+    // rather than the modal just hanging on a black freeze frame.
+    modalVideo.addEventListener("ended", () => {
+      if (progressFill) progressFill.style.transform = "scaleX(1)";
+      window.setTimeout(closeWithMorph, 220);
+    });
+  }
+
+  /* ---- Custom cursor: magnetic lerp follow + state-driven text swap --- */
+  if (cursor && modal && modalVideo) {
+    const fineHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const lerp = reducedMotion ? 1 : 0.22;
+
+    let targetX = window.innerWidth / 2;
+    let targetY = window.innerHeight / 2;
+    let cursorX = targetX;
+    let cursorY = targetY;
+    let rafId = 0;
+
+    const setTranslate = () => {
+      cursor.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0)`;
+    };
+
+    const tick = () => {
+      cursorX += (targetX - cursorX) * lerp;
+      cursorY += (targetY - cursorY) * lerp;
+      setTranslate();
+      rafId = requestAnimationFrame(tick);
+    };
+
+    const onMouseMove = (event: MouseEvent) => {
+      targetX = event.clientX;
+      targetY = event.clientY;
+      // Derive cursor state from what's under the pointer right now
+      const overVideo = modalVideo.contains(event.target as Node) || event.target === modalVideo;
+      cursor.dataset.state = overVideo ? (modalVideo.paused ? "play" : "pause") : "close";
+    };
+
+    const enableCursor = () => {
+      if (!fineHover) return; // touch / coarse pointer → keep system cursor
+      cursor.setAttribute("data-active", "");
+      cursor.dataset.state = "close";
+      // Seed position so the cursor doesn't pop in from (0, 0)
+      targetX = window.innerWidth / 2;
+      targetY = window.innerHeight / 2;
+      cursorX = targetX;
+      cursorY = targetY;
+      setTranslate();
+      modal.addEventListener("mousemove", onMouseMove);
+      tick();
+    };
+
+    const disableCursor = () => {
+      cursor.removeAttribute("data-active");
+      modal.removeEventListener("mousemove", onMouseMove);
+      cancelAnimationFrame(rafId);
+    };
+
+    // Hook into the dialog lifecycle. `<dialog>` fires no "show" event, so we
+    // observe attribute changes on `open` instead.
+    const observer = new MutationObserver(() => {
+      if (modal.hasAttribute("open")) enableCursor();
+      else disableCursor();
+    });
+    observer.observe(modal, { attributes: true, attributeFilter: ["open"] });
+
+    // Re-evaluate cursor state when the video itself toggles play/pause
+    // (covers clicks on the native video controls, keyboard space, etc.)
+    modalVideo.addEventListener("play", () => {
+      if (cursor.dataset.state === "play") cursor.dataset.state = "pause";
+    });
+    modalVideo.addEventListener("pause", () => {
+      if (cursor.dataset.state === "pause") cursor.dataset.state = "play";
+    });
+  }
+</script>
+

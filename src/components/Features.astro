@@ -1,0 +1,647 @@
+---
+/**
+ * Features.astro — Features section (Figma node 812:15379)
+ *
+ * Structure:
+ *   1. Section tag — "Features" pill (same recipe as About's pill).
+ *   2. Sticky-stacking deck — 4 cards that scroll-overlap. Each card
+ *      `position: sticky; inset-block-start: <offset>;` so as the user
+ *      scrolls, every card pins at the same offset and the next card
+ *      slides up over it (нахлест per request). A small progressive
+ *      offset on each card lets the top edge of the previous card peek
+ *      slightly above its successor — hint of stack depth.
+ *
+ * Card frame (mirrors `.about__frame` recipe so Features and About read
+ * as one visual system):
+ *   • Outer frame: 0.75px solid var(--color-fg-faint) border, 15px pad,
+ *     radius 55px (40 + 15) so the inner curve is concentric with the
+ *     outer curve, bg-soft fill in the gap.
+ *   • Inner panel: 40px radius (Figma), pure black surface, content
+ *     overlay on top.
+ *
+ * Card height: matches About slide height range. About slides are
+ *   clamp(17rem, 55vw, 67rem) wide at aspect 1074/679 (1.582). That
+ *   gives height = width / 1.582 = clamp(10.75rem, 34.77vw, 42.375rem).
+ *   Features cards use the SAME block-size range so the two sections
+ *   feel rhythmically synced as the user scrolls between them.
+ *
+ * Card layout:
+ *   - Two halves (50/50 grid on desktop):
+ *       • Text half — heading + subtitle, centered.
+ *       • Visual half — single placeholder image (`all.png`).
+ *   - Halves alternate per card via `data-media-side`: even cards =
+ *     visual right, odd cards = visual left.
+ *
+ * PLACEHOLDER content note:
+ *   Per request, all 4 cards use the same "Cross-domain KPIs" title/copy
+ *   from Figma. The user will iterate on titles/copy in a follow-up pass.
+ *
+ * Assets:
+ *   public/features/bg-hevc.mp4         — looped surface video, HEVC (5.76 MB, Safari/iOS)
+ *   public/features/bg.webm             — looped surface video, VP9 (3.78 MB, Chromium/Firefox)
+ *   public/features/bg-poster.jpg       — first frame of the video, high-quality skeleton fallback
+ *   public/features/KPI/all.png         — temporary placeholder visual (composite of all KPIs)
+ *   (LQIP for the video is inlined as base64 in the .features__card-bg-fallback rule)
+ *
+ * Reveal contract (mirrors Header.astro):
+ *   1. LQIP fallback (CSS inline data URL) is visible the instant
+ *      HTML renders — grayscale + blur + pulse, zero network cost.
+ *   2. Poster fades in over the LQIP once `img.decode()` resolves.
+ *   3. Video fades in over the poster on `canplaythrough`. Under
+ *      Save-Data / 2g / reduced-motion the video is dropped and the
+ *      poster is the final frame.
+ *   4. IntersectionObserver decode-gates the 4 videos — only the
+ *      visible card runs a decoder at any moment.
+ *   5. `axion:idle` fades video to 0 (0.8s ease) then pauses 900ms
+ *      later. `axion:active` removes the idle attribute and plays
+ *      again. Same contract Header uses for the hero video.
+ *
+ * Asset TODO:
+ *   Replace `all.png` with the final staircase composition (3 separate
+ *   KPI cards) once design lands. The 3 source images `KPI/1.png` /
+ *   `2.png` / `3.png` are still in the repo, just not currently used.
+ *
+ * Position-rule notes (CLAUDE.md rule 8):
+ *   • `position: sticky` on every card — user-requested center-stack.
+ *   • `position: absolute` on the bg stack (wrapper + 3 layers) —
+ *     decorative overlay inside the panel (allowlist).
+ */
+
+const features = [
+  {
+    title: "Cross-domain KPIs",
+    desc: "A single board for tracking compliance across food, waste, environment, and infrastructure.",
+  },
+  {
+    title: "Cross-domain KPIs",
+    desc: "A single board for tracking compliance across food, waste, environment, and infrastructure.",
+  },
+  {
+    title: "Cross-domain KPIs",
+    desc: "A single board for tracking compliance across food, waste, environment, and infrastructure.",
+  },
+  {
+    title: "Cross-domain KPIs",
+    desc: "A single board for tracking compliance across food, waste, environment, and infrastructure.",
+  },
+];
+---
+
+<section class="features" id="features" aria-labelledby="features-tag">
+  {/* ───────────────── Section tag ───────────────── */}
+  <header class="features__intro">
+    <p class="features__tag" id="features-tag">Features</p>
+  </header>
+
+  {/* ───────────────── Sticky-stacking deck ─────────────────
+      Each card sticks at the top with a tiny progressive offset
+      (--peek * index) so the previous card's top edge stays
+      visible behind the next one — visual cue for the stack. */}
+  <ol class="features__stack" role="list">
+    {
+      features.map((feature, i) => (
+        <li
+          class="features__card"
+          data-index={i}
+          data-media-side={i % 2 === 0 ? "end" : "start"}
+        >
+          {/* OUTER FRAME — owns the thin border + padding gap. Mirrors
+              About's .about__frame recipe so the two sections read as
+              one visual system. */}
+          <div class="features__card-inner">
+            {/* INNER PANEL — the dark rounded surface that holds the
+                background stack + content. 40px radius per Figma. */}
+            <div class="features__card-panel">
+              {/* BACKGROUND STACK — layered reveal, mirrors Header's
+                  .hero__bg pattern (LQIP → poster → video). All three
+                  layers fill this wrapper, which itself is positioned
+                  per Figma "3 12" element (square, bottom-anchored,
+                  ~154% of panel height, centered horizontally). */}
+              <div class="features__card-bg" aria-hidden="true">
+                {/* Deepest layer — LQIP from the video's first frame.
+                    298 bytes, inline base64. Visible the instant HTML
+                    parses (zero network round-trip). Grayscale + blur +
+                    scale per site-wide skeleton convention. Pulses
+                    until the video reveals. */}
+                <div class="features__card-bg-fallback"></div>
+
+                {/* Full-resolution poster — first frame of the video at
+                    ~250 KB. Fades in once `img.decode()` resolves so
+                    we never render a half-decoded image. Stays visible
+                    behind the video as the fallback frame (kept for
+                    Save-Data / reduced-motion users when video drops). */}
+                <img
+                  class="features__card-bg-poster"
+                  src="/features/bg-poster.jpg"
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  width="1440"
+                  height="1440"
+                />
+
+                {/* Video — fades in on `canplaythrough`. Fades back out
+                    and pauses on `axion:idle` (see script below). */}
+                <video
+                  class="features__card-bg-video"
+                  muted
+                  loop
+                  playsinline
+                  preload="metadata"
+                >
+                  <source src="/features/bg-hevc.mp4" type="video/mp4; codecs=hvc1" />
+                  <source src="/features/bg.webm" type="video/webm" />
+                </video>
+              </div>
+
+              <div class="features__card-content">
+                <div class="features__card-text">
+                  <h3 class="features__card-title">{feature.title}</h3>
+                  <p class="features__card-desc">{feature.desc}</p>
+                </div>
+
+                {/* Temporary placeholder visual — single image composite.
+                    Will return to a 3-card staircase when the final
+                    design lands; see component head TODO.
+                    `.skeleton` class paints a B&W shimmer until the
+                    image decodes; the script removes it on load. */}
+                <div class="features__card-visual skeleton" aria-hidden="true">
+                  <img
+                    class="features__card-visual-img"
+                    src="/features/KPI/all.png"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    width="960"
+                    height="810"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </li>
+      ))
+    }
+  </ol>
+</section>
+
+<style>
+  /* ════════════════════════════════════════════════════════════
+     Component-local tokens — values lifted from Figma node 812:15379
+     and synced with About's frame spec for visual rhythm.
+     ════════════════════════════════════════════════════════════ */
+  .features {
+    /* Frame chrome — match About: 0.75px stroke + 15px gap. */
+    --card-pad: 0.9375rem;   /* 15px — same as About's --frame-pad */
+    --card-radius: 2.5rem;   /* 40px — inner panel (Figma) */
+    /* Outer radius = inner + pad so the two curves stay concentric. */
+    --card-radius-outer: calc(var(--card-radius) + var(--card-pad));
+
+    /* Block-size MATCHES About slides exactly. About's --slide-w is
+       clamp(17rem, 55vw, 67rem) at aspect 1074/679 (≈1.582), so the
+       slide height is width / 1.582. Each clamp() stop divided through:
+         min: 17rem  / 1.582 ≈ 10.75rem
+         vw:  55vw   / 1.582 ≈ 34.77vw
+         max: 67rem  / 1.582 ≈ 42.375rem */
+    --card-height: clamp(10.75rem, 34.77vw, 42.375rem);
+
+    /* Title — Figma 36px / 46px. Fluid down to 24px on small viewports. */
+    --title-size: clamp(1.5rem, 1.05rem + 1.4vw, 2.25rem);
+    --title-leading: 1.28;
+    --title-tracking: -0.027em;
+
+    /* Subtitle — Figma 15px regular, 70% white. */
+    --desc-size: clamp(0.875rem, 0.78rem + 0.25vw, 0.9375rem);
+  }
+
+  /* ───────────────── Section frame ─────────────────
+     Top padding uses --space-section-divider — the 120-180px gap
+     from the previous section's content end to this section's
+     label pill. Bottom is 0; the last card's sticky pin handles
+     the section tail. */
+  .features {
+    position: relative;
+    background: var(--color-bg);
+    padding-block: var(--space-section-divider) 0;
+  }
+
+  /* ───────────────── Intro (Features tag) ─────────────────
+     Bottom margin uses the shared --space-section-title-gap token —
+     120-180px gap from the "Features" pill to the first card.
+     Matches About's intro→gallery rhythm exactly. */
+  .features__intro {
+    display: flex;
+    justify-content: center;
+    padding-inline: var(--page-padding);
+    margin-block-end: var(--space-section-title-gap);
+  }
+
+  /* "Features" pill — same recipe as About's tag.
+     TODO: swap font-family to Geist Mono once @fontsource-variable/geist-mono
+     is installed; currently using the system mono stack. */
+  .features__tag {
+    margin: 0;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: var(--text-xs);
+    line-height: 1.28;
+    color: var(--color-fg);
+    opacity: 0.7;
+    border: 1px solid var(--color-fg-faint);
+    border-radius: 999px;
+    padding-block: var(--pill-section-pad-block);
+    padding-inline: var(--pill-section-pad-inline);
+    inline-size: max-content;
+    text-box-trim: trim-both;
+    text-box-edge: cap alphabetic;
+  }
+
+  /* ───────────────── Stack container ─────────────────
+     Each child <li> is a 100svh sticky stage. They live adjacent in
+     the flex flow (no gap) — each stage pins at top:0 for exactly
+     one viewport of scroll, and the next stage slides up from below
+     during the same scroll window. Result: card 2 progressively
+     covers card 1, in sync with the scroll. */
+  .features__stack {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    max-inline-size: var(--frame-max);
+    margin-inline: auto;
+  }
+
+  /* ───────────────── Card (sticky stage) ─────────────────
+     100svh tall slot in the flex flow → pins at top:0 for exactly
+     one viewport of scroll. The actual visual card sits inside,
+     centered vertically (same recipe as .about__stage). When the
+     next stage approaches from below, its visual rises through the
+     viewport center and covers the current card. */
+  .features__card {
+    position: sticky;
+    inset-block-start: 0;
+    block-size: 100svh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-inline: var(--page-padding);
+    box-sizing: border-box;
+  }
+
+  /* The "section-title-gap" semantic is "pill → visible content = 120px".
+     Because the card-inner is centered inside a 100svh slot, the slot
+     adds (100svh - --card-height) / 2 of empty space above the visible
+     card. We pull the FIRST slot up by exactly that offset so the
+     visible card lands at section-title-gap below the pill instead of
+     gap + centering-padding (was reading as ~320px on desktop). The
+     slot's upper empty region overlaps the section's top padding, but
+     it's transparent so nothing actually paints over the pill.
+     Subsequent cards keep their natural cumulative offset — the morph
+     (next card rising through viewport center) is unchanged. */
+  .features__card:first-child {
+    margin-block-start: calc((100svh - var(--card-height)) / -2);
+  }
+
+  /* ───────────────── Outer frame ─────────────────
+     The visible card chrome: thin border, 15px padding gap, bg-soft
+     fill in the gap. Same recipe as About's .about__frame. The outer
+     radius is `inner + pad` so the rounded corners stay concentric
+     with the inner panel. */
+  .features__card-inner {
+    position: relative;
+    inline-size: 100%;
+    block-size: var(--card-height);
+    margin: 0;
+    border: 0.75px solid var(--color-fg-faint);
+    border-radius: var(--card-radius-outer);
+    padding: var(--card-pad);
+    box-sizing: border-box;
+    background: var(--color-bg-soft);
+    overflow: hidden;
+  }
+
+  /* ───────────────── Inner panel ─────────────────
+     The dark rounded surface that holds video + content. 40px radius
+     per Figma — the curve the user reads as "the card". */
+  .features__card-panel {
+    position: relative;
+    inline-size: 100%;
+    block-size: 100%;
+    border-radius: var(--card-radius);
+    background: #000;
+    overflow: hidden;
+  }
+
+  /* ───────────────── Background stack (wrapper) ─────────────────
+     Square 1440² composition positioned per Figma "3 12" element:
+       Figma: 958×958 within 1488×620 panel, top:-338 → bottom-aligned,
+       block-size = 958/620 = 154% of panel height, centered.
+     Translates to CSS: bottom-anchor with extra height so the top
+     bleeds above the panel and gets clipped by the panel's
+     overflow:hidden. Contains 3 stacked layers (fallback / poster /
+     video) — they all fill the wrapper at 100%. */
+  .features__card-bg {
+    position: absolute;
+    inset-block-end: 0;
+    inset-inline-start: 50%;
+    block-size: 154%;
+    inline-size: auto;
+    aspect-ratio: 1 / 1;
+    transform: translateX(-50%);
+    pointer-events: none;
+    user-select: none;
+    z-index: 0;
+  }
+
+  /* Shared positioning for all 3 bg layers — fill the wrapper. */
+  .features__card-bg-fallback,
+  .features__card-bg-poster,
+  .features__card-bg-video {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    object-position: center;
+  }
+
+  /* ───────────────── LQIP fallback (deepest) ─────────────────
+     298-byte JPG inlined as base64 — visible the moment HTML parses,
+     zero network round-trip. Grayscale + blur + scale per site-wide
+     skeleton convention. Pulses until the video reveals on top. */
+  .features__card-bg-fallback {
+    z-index: 0;
+    background-color: var(--color-bg);
+    background-image: url("data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYyLjI4LjEwMQD/2wBDAAgeHiMeIykpKSkpKTAtMDIyMjAwMDAyMjI2NjY/Pz82NjYyMjY2PDw/P0VHRUFBP0FHR0tLS1paVlZpaWyBgZv/xABgAAADAQEBAAAAAAAAAAAAAAAGBQQDAgcBAQEBAAAAAAAAAAAAAAAAAAABAxAAAwABBAEFAQAAAAAAAAAAAQACESEDQVEEExLhofBhEQEBAAAAAAAAAAAAAAAAAAAAAf/AABEIACAAIAMBIgACEQADEQD/2gAMAwEAAhEDEQA/APAGkS6ROU68fa27NA1jr+/DpIztAvsYyMJfux6dkfSPXr+4ViuYPC1k6o63C+2QNrsnUnKlovBLih//2Q==");
+    background-size: cover;
+    background-position: center;
+    /* grayscale → B&W (skeleton convention); blur → hide pixelation;
+       scale → hide blur edges. */
+    filter: grayscale(1) blur(28px);
+    transform: scale(1.08);
+    animation: features-bg-pulse 2s ease-in-out infinite;
+  }
+
+  /* Once the video is up, the deep skeleton stops pulsing (hidden anyway). */
+  .features__card-bg[data-video-ready] .features__card-bg-fallback {
+    animation: none;
+  }
+
+  /* ───────────────── Full-resolution poster ─────────────────
+     Fades in over the LQIP once decoded. Stays behind the video
+     as the fallback frame (visible when the video is dropped
+     under Save-Data / reduced-motion, or while it's still loading). */
+  .features__card-bg-poster {
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.6s ease-out;
+  }
+
+  .features__card-bg[data-poster-ready] .features__card-bg-poster {
+    opacity: 1;
+  }
+
+  /* ───────────────── Video ─────────────────
+     Fades in on `canplaythrough`, fades out on `axion:idle` (and is
+     paused 900ms later by the script — the fade hides the pause).
+     Same 0.8s transition used in both directions so the rhythm is
+     symmetric, matching Header. */
+  .features__card-bg-video {
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.8s ease-out;
+  }
+
+  .features__card-bg[data-video-ready] .features__card-bg-video {
+    opacity: 1;
+  }
+
+  .features__card-bg[data-video-idle] .features__card-bg-video {
+    opacity: 0;
+  }
+
+  @keyframes features-bg-pulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 0.85; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .features__card-bg-fallback {
+      animation: none;
+      opacity: 0.7;
+    }
+    .features__card-bg-poster,
+    .features__card-bg-video {
+      transition: none;
+    }
+  }
+
+  /* ───────────────── Content row ───────────────── */
+  .features__card-content {
+    position: relative;
+    z-index: 1;
+    block-size: 100%;
+    inline-size: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+  }
+
+  .features__card[data-media-side="start"] .features__card-text {
+    grid-column: 2;
+  }
+
+  .features__card[data-media-side="start"] .features__card-visual {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  /* ───────────────── Text half ───────────────── */
+  .features__card-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 1.25rem; /* Figma 20px */
+    padding-inline: clamp(1.5rem, 3vw, 3rem);
+  }
+
+  .features__card-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 300;
+    font-size: var(--title-size);
+    line-height: var(--title-leading);
+    letter-spacing: var(--title-tracking);
+    color: var(--color-fg);
+    max-inline-size: 26.1875rem; /* Figma 419px */
+  }
+
+  .features__card-desc {
+    margin: 0;
+    font-family: var(--font-body);
+    font-weight: 400;
+    font-size: var(--desc-size);
+    line-height: var(--leading-normal);
+    color: var(--color-fg);
+    opacity: 0.7;
+    max-inline-size: 23.625rem; /* Figma 378px */
+  }
+
+  /* ───────────────── Visual half (placeholder) ─────────────────
+     Single-image composite. The real staircase composition will
+     return once design lands. Image sized to match the Figma
+     staircase bounding box — ~52% width × 65% height of the right
+     panel. We anchor on width (22vw fluid) and let aspect-ratio
+     drive the height. */
+  .features__card-visual {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    block-size: 100%;
+    inline-size: 100%;
+    padding: clamp(1rem, 2vw, 2rem);
+    box-sizing: border-box;
+  }
+
+  .features__card-visual-img {
+    display: block;
+    inline-size: clamp(12rem, 22vw, 23rem);
+    block-size: auto;
+    max-block-size: 100%;
+    object-fit: contain;
+    object-position: center;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* ───────────────── Responsive ─────────────────
+     Mobile keeps the 100svh sticky stack and per-card morph (same
+     desktop mechanic) — only the INSIDE of each card switches to a
+     single-column layout (text above visual) because side-by-side
+     halves don't fit. The first-card compensation (negative
+     margin-block-start) stays in effect because cards are still
+     centered in their 100svh slot. */
+  @media (max-width: 56em) {
+    .features {
+      /* Default --card-height clamp shrinks to 172px on phones
+         (10.75rem min); in a 100svh sticky slot that leaves a
+         tiny card with huge empty padding. Override so the card
+         fills most of the viewport instead. */
+      --card-height: clamp(28rem, 75svh, 36rem);
+    }
+
+    .features__card-content {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+      align-items: stretch;
+      padding-block: clamp(2rem, 6vw, 3rem) 0;
+      gap: clamp(1rem, 3vw, 2rem);
+    }
+
+    .features__card[data-media-side="start"] .features__card-text,
+    .features__card[data-media-side="end"] .features__card-text {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .features__card[data-media-side="start"] .features__card-visual,
+    .features__card[data-media-side="end"] .features__card-visual {
+      grid-column: 1;
+      grid-row: 2;
+    }
+  }
+
+  @media (max-width: 36em) {
+    .features__card-title {
+      max-inline-size: 18rem;
+    }
+  }
+</style>
+
+<script>
+  import { detectMediaPrefs } from "../lib/mediaPrefs";
+  import { revealOnDecode } from "../lib/revealOnDecode";
+  import { gateVideosByVisibility } from "../lib/videoGate";
+  import { setupIdleVideoPause } from "../lib/idleVideoPause";
+
+  /* ═══════════════════════════════════════════════════════════════
+     Background stack + idle behaviour — mirrors Header.astro's
+     `.hero__bg` recipe so the two sections share one optimization
+     contract:
+
+       1. LQIP (CSS background) is always visible — zero network cost.
+       2. Poster reveals via `img.decode()` so we never paint a half-
+          decoded image (no top-to-bottom render on slow links).
+       3. Video reveals on `canplaythrough`; under Save-Data / 2g /
+          reduced-motion the video is removed and the poster is the
+          final frame.
+       4. IntersectionObserver decode-gates the 4 card videos: only
+          the visible card decodes at any moment.
+       5. `axion:idle` fades the video to 0 then pauses 900ms later
+          (the fade hides the pause moment). `axion:active` removes
+          the idle attribute and plays again. Same fade-then-pause
+          contract Header uses for the hero video.
+     ═══════════════════════════════════════════════════════════════ */
+
+  const { slowConnection, reduceMotion } = detectMediaPrefs();
+
+  /* Per-card setup. Each card has its own bg stack + visual skeleton. */
+  const cards = document.querySelectorAll<HTMLElement>(".features__card");
+  const videoPairs: { bg: HTMLElement; video: HTMLVideoElement }[] = [];
+
+  cards.forEach((card) => {
+    const bg = card.querySelector<HTMLDivElement>(".features__card-bg");
+    const poster = bg?.querySelector<HTMLImageElement>(".features__card-bg-poster");
+    const video = bg?.querySelector<HTMLVideoElement>(".features__card-bg-video");
+
+    /* ─── Poster reveal ─── */
+    if (bg && poster) {
+      revealOnDecode(poster, () => bg.setAttribute("data-poster-ready", "true"));
+    }
+
+    /* ─── Visual half (all.png) skeleton reveal ───
+       Same pattern as About's product frames: the .skeleton class
+       paints a B&W shimmer until the image lands, then we strip the
+       class. `load` is enough here (PNG, single-pass decode). */
+    const visualFrame = card.querySelector<HTMLElement>(".features__card-visual");
+    const visualImg = visualFrame?.querySelector<HTMLImageElement>(".features__card-visual-img");
+    if (visualFrame && visualImg) {
+      const reveal = (): void => visualFrame.classList.remove("skeleton");
+      if (visualImg.complete && visualImg.naturalWidth > 0) {
+        reveal();
+      } else {
+        visualImg.addEventListener("load", reveal, { once: true });
+        visualImg.addEventListener("error", reveal, { once: true });
+      }
+    }
+
+    /* ─── Video reveal + slow-network / reduced-motion drop ─── */
+    if (bg && video) {
+      if (slowConnection || reduceMotion) {
+        /* Drop the video entirely — poster is the final frame. */
+        video.remove();
+        return;
+      }
+      const revealVideo = (): void => bg.setAttribute("data-video-ready", "true");
+      video.addEventListener("canplaythrough", revealVideo, { once: true });
+      video.addEventListener(
+        "loadeddata",
+        () => {
+          if (video.readyState >= 3) revealVideo();
+        },
+        { once: true }
+      );
+      video.addEventListener("error", () => video.remove(), { once: true });
+      videoPairs.push({ bg, video });
+    }
+  });
+
+  /* ─── Decode gating + idle pause ───
+     Only the on-screen card runs a decoder (no 4 parallel decoders); on
+     idle the videos fade then pause 900ms later. Shared helpers — Footer
+     uses the same contract. */
+  gateVideosByVisibility(videoPairs.map((p) => p.video));
+  setupIdleVideoPause(videoPairs);
+</script>
