@@ -49,6 +49,11 @@
      User-perceived "fast but expensive feel". */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1); /* hover micro-interactions, mask swaps */
   --ease-morph: cubic-bezier(0.32, 0.72, 0, 1); /* large transitions (modal FLIP) */
+  /* Symmetric S-curve (in-out): soft start → accelerate → soft landing. For
+     scroll-driven "settle into place" motion (editorial headline exit/return).
+     CSS transitions use this token; scrubbed transforms mirror it in JS via a
+     smootherstep() (6t⁵−15t⁴+10t³), the discrete-sampling equivalent. */
+  --ease-s: cubic-bezier(0.65, 0, 0.35, 1);
 
   --dur-hover: 0.5s; /* hover scale / lift / mask swap — all sync to this */
   --dur-morph: 0.7s; /* modal morph in, view transitions */

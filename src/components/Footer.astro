@@ -122,7 +122,15 @@ const legalLinks = [
       >
       <span class="footer__title-line-2" set:html={footerIntelligence} />
     </p>
-    <p class="footer__subtitle">The decision infrastructure for the cities of tomorrow</p>
+    {/* Subtitle in a one-line hard mask (rule #18) — mirror of the hero exit.
+        As the footer scrolls into place the text rises out of the mask into
+        position (scrubbed translateY in the footer script). Desktop + motion-on
+        only; on mobile / reduced-motion the mask is inert (overflow visible). */}
+    <p class="footer__subtitle">
+      <span class="footer__subtitle-mask">
+        <span class="footer__subtitle-text">The decision infrastructure for the cities of tomorrow</span>
+      </span>
+    </p>
   </div>
 
   {/* ── Bottom — year (left) + legal links (right, neighbour-fade-blur). */}
@@ -501,6 +509,33 @@ const legalLinks = [
     white-space: nowrap;
   }
 
+  /* Subtitle hard mask — one rendered line (rule #18, leading-snug never 1).
+     The text rises out of it into place as the footer settles (scrubbed
+     translateY set in the script). Mirror of .hero__subtitle-mask. */
+  .footer__subtitle-mask {
+    display: block;
+    overflow: hidden;
+    block-size: calc(var(--text-sm) * var(--leading-snug));
+    min-inline-size: 0; /* defensive vs nowrap grid blowout (see frontend memory) */
+  }
+  .footer__subtitle-text {
+    display: block;
+    white-space: nowrap;
+    line-height: var(--leading-snug);
+  }
+  /* Return-from-edge layers — line-1 enters from the left, line-2 from the
+     right, with a deblur, scrubbed in the script. will-change hints both. */
+  .footer__title-line-1,
+  .footer__title-line-2 {
+    will-change: transform, filter;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .footer__title-line-1,
+    .footer__title-line-2 {
+      will-change: auto;
+    }
+  }
+
   /* =================================================================
      BOTTOM — year (left) + legal links (right)
      ================================================================= */
@@ -625,6 +660,15 @@ const legalLinks = [
       inline-size: 100%;
       max-inline-size: 100%;
       text-align: start;
+      white-space: normal;
+    }
+    /* Mask inert on mobile — subtitle wraps multi-line, a one-line mask would
+       clip it. The return-from-edge effect is desktop-only. */
+    .footer__subtitle-mask {
+      overflow: visible;
+      block-size: auto;
+    }
+    .footer__subtitle-text {
       white-space: normal;
     }
     .footer__meta {
@@ -755,6 +799,67 @@ const legalLinks = [
       },
     });
     return () => st.kill();
+  });
+
+  /* ── Editorial headline return — mirror of the hero's split-exit. As the
+     footer scrolls in, line-1 ("Agentic decision") arrives from the LEFT edge,
+     line-2 (Intelligence) from the RIGHT, both deblurring, and the subtitle
+     rises out of its mask — all S-eased (smootherstep). They land exactly as
+     the magnetic snap settles the footer: `end: "top top"` is the snap's
+     resting position, and since the footer is ≥100svh the headline is fully
+     home by the time it locks. transform + filter only (rule #8). PINLESS — no
+     pin-spacer, so it doesn't touch the Hero/About/SPAR pin coordination.
+     Desktop + motion-on only; matchMedia auto-creates/kills it across the
+     breakpoint and the teardown clears inline styles so the static layout
+     (mobile / reduced-motion) is never left with the headline off-screen. */
+  const headlineMM = gsap.matchMedia();
+  headlineMM.add("(min-width: 40em) and (prefers-reduced-motion: no-preference)", () => {
+    const title = document.querySelector<HTMLElement>(".footer__title");
+    const l1 = title?.querySelector<HTMLElement>(".footer__title-line-1");
+    const l2 = title?.querySelector<HTMLElement>(".footer__title-line-2");
+    const sub = document.querySelector<HTMLElement>(".footer__subtitle-text");
+    if (!l1 || !l2 || !sub) return;
+
+    // smootherstep — the S-curve mirror of the --ease-s token (6t⁵−15t⁴+10t³).
+    const sEase = (t: number): number => {
+      const x = t < 0 ? 0 : t > 1 ? 1 : t;
+      return x * x * x * (x * (x * 6 - 15) + 10);
+    };
+    // inv = 1 at entry (parked at the edges) → 0 settled (home, in place).
+    const apply = (p: number): void => {
+      const inv = 1 - sEase(p);
+      const tx = window.innerWidth * 0.6 * inv;
+      l1.style.transform = `translate3d(${(-tx).toFixed(1)}px, 0, 0)`;
+      l2.style.transform = `translate3d(${tx.toFixed(1)}px, 0, 0)`;
+      l1.style.filter = l2.style.filter =
+        inv > 0.001 ? `blur(${(10 * inv).toFixed(2)}px)` : "";
+      // Gentle tail-fade so the layers emerge from the blur rather than pop in.
+      const op = String(1 - Math.max(0, (inv - 0.6) / 0.4));
+      l1.style.opacity = l2.style.opacity = op;
+      // Subtitle rises out of its mask into place (translateY 100% → 0).
+      sub.style.transform = `translateY(${(100 * inv).toFixed(1)}%)`;
+    };
+
+    const st = ScrollTrigger.create({
+      trigger: ".footer",
+      start: "top bottom", // footer's top reaches the viewport bottom (entering)
+      end: "top top", // footer fills the viewport — the snap's resting position
+      scrub: 0.15,
+      invalidateOnRefresh: true,
+      onUpdate: (self) => apply(self.progress),
+      onRefresh: (self) => apply(self.progress),
+    });
+    apply(st.progress ?? 0); // park at the edges before the first scroll tick
+
+    return () => {
+      st.kill();
+      for (const el of [l1, l2]) {
+        el.style.transform = "";
+        el.style.filter = "";
+        el.style.opacity = "";
+      }
+      sub.style.transform = "";
+    };
   });
 
   /* ── Footer hand-off — hide the floating nav pill while the footer owns the
