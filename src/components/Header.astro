@@ -241,10 +241,14 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
 
     Two nested transforms that never fight:
       • outer .hero__video       → hide state (CSS-transitioned translateY),
-        toggled by data-hide-up / data-hide-spar / data-hide-footer.
-      • inner .hero__video-morph → scroll-morph (JS sets transform): at hero
-        progress 0 it scales up to overlay .hero__video-slot-box; at
-        progress 1 it's identity = the docked mini player.
+        toggled by data-hide-up / data-hide-spar / data-hide-footer. Stays a
+        STABLE hover hitbox — it does NOT move on hover.
+      • inner .hero__video-morph → scroll-morph on `transform` (JS sets it) PLUS
+        the hover lift on the separate `translate` property. At hero progress 0
+        it scales up to overlay .hero__video-slot-box; at progress 1 it's the
+        docked mini player. Lifting the morph (not the outer) keeps the outer's
+        box still, so the widget can't slide out from under the cursor and
+        flutter its own :hover.
     Starts hidden (no data-ready) and is revealed by JS after the first morph
     measurement, so there's never a mini-at-bottom flash on load. */}
 <figure class="hero__video">
@@ -705,26 +709,39 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
   }
 
   /* Inner morph layer — JS sets `transform: translate(...) scale(...)` per
-     scroll tick. No CSS transition: it's scroll-scrubbed (the hero
-     ScrollTrigger's scrub provides the smoothing). */
+     scroll tick (no transition on `transform`: it's scroll-scrubbed, the hero
+     ScrollTrigger's scrub provides the smoothing).
+     The hover lift rides on the SEPARATE `translate` property, which composes
+     OUTSIDE the JS `transform` — so the lift is applied in dock space (a
+     constant 4px at every scroll position, never magnified by the morph scale)
+     and gets its own transition without touching the scrubbed `transform`. */
   .hero__video-morph {
     display: block;
     transform-origin: center center;
+    translate: 0 0;
     will-change: transform;
+    transition: translate var(--dur-hover) var(--ease-out-soft);
   }
 
   /* Subtle lift on hover — the dock's affordance (same language as the old
-     widget). Composes with the docked translate. Only fires when ready +
-     not hidden (a hidden dock has pointer-events:none, so it can't hover). */
+     widget). Lifting the MORPH (a descendant) instead of the outer dock keeps
+     the dock's own box stationary, so it stays a stable hover hitbox: the
+     widget can't slide out from under the cursor and flutter the :hover state.
+     Synced to the hover tokens so it resolves in lockstep with the poster
+     settle + label swap (motion sync rule). Only fires when ready + not hidden
+     (a hidden dock has pointer-events:none, so it can't hover). */
   @media (hover: hover) {
-    .hero__video[data-ready]:hover {
-      transform: translate(-50%, -0.25rem);
+    .hero__video[data-ready]:hover .hero__video-morph {
+      translate: 0 -0.25rem;
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .hero__video {
       transition: opacity 0.2s linear;
+    }
+    .hero__video-morph {
+      transition: none;
     }
   }
 
@@ -892,7 +909,9 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
   }
 
   @media (hover: hover) {
-    .hero__video-frame:hover .hero__video-poster[data-ready] {
+    /* Keyed off the STABLE dock hover (not the frame, which lifts on hover) so
+       the poster settle can't flutter as the widget slides up. */
+    .hero__video[data-ready]:hover .hero__video-poster[data-ready] {
       transform: scale(1);
     }
   }
@@ -1687,10 +1706,12 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
 
       const measureMorph = (): void => {
         if (!dock || !morphEl || !slotBox || !frameEl) return;
-        /* Neutralise the inner morph + any outer hide so the frame reports
-           its TRUE docked rect. Synchronous — no paint happens between the
-           mutate and the restore, so there's no visible flash. */
+        /* Neutralise the inner morph (scrubbed transform + the hover-lift
+           translate) + any outer hide so the frame reports its TRUE docked
+           rect. Synchronous — no paint happens between the mutate and the
+           restore, so there's no visible flash. */
         const prevMorphT = morphEl.style.transform;
+        const prevMorphTr = morphEl.style.translate;
         const prevTrans = dock.style.transition;
         const hideUp = dock.hasAttribute("data-hide-up");
         const hideSpar = dock.hasAttribute("data-hide-spar");
@@ -1700,6 +1721,7 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
         dock.removeAttribute("data-hide-spar");
         dock.removeAttribute("data-hide-footer");
         morphEl.style.transform = "none";
+        morphEl.style.translate = "none";
 
         const f = frameEl.getBoundingClientRect();
         const s = slotBox.getBoundingClientRect();
@@ -1711,6 +1733,7 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
         m.dy = s.top + scrollY + s.height / 2 - (f.top + f.height / 2);
 
         morphEl.style.transform = prevMorphT;
+        morphEl.style.translate = prevMorphTr;
         if (hideUp) dock.setAttribute("data-hide-up", "");
         if (hideSpar) dock.setAttribute("data-hide-spar", "");
         if (hideFooter) dock.setAttribute("data-hide-footer", "");
@@ -1841,14 +1864,17 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
         });
       }
 
-      /* Label hover swap ("How it works" ↔ "Play"). The frame lives in a
-         separate subtree from the label, so :has() can't cross — drive it
-         with pointer events that toggle [data-video-hover] on .hero. */
-      if (frameEl && hero && window.matchMedia("(hover: hover)").matches) {
-        frameEl.addEventListener("pointerenter", () =>
+      /* Label hover swap ("How it works" ↔ "Play"). The label lives in a
+         separate subtree from the dock, so :has() can't cross — drive it with
+         pointer events that toggle [data-video-hover] on .hero. Bind to the
+         DOCK, not the frame: the frame lifts on hover, so pointer events on it
+         would flutter as it slides under a resting cursor; the dock's own box
+         never moves. */
+      if (dock && hero && window.matchMedia("(hover: hover)").matches) {
+        dock.addEventListener("pointerenter", () =>
           hero.setAttribute("data-video-hover", "")
         );
-        frameEl.addEventListener("pointerleave", () =>
+        dock.addEventListener("pointerleave", () =>
           hero.removeAttribute("data-video-hover")
         );
       }
