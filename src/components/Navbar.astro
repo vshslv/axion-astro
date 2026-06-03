@@ -1383,6 +1383,48 @@ const chips = ["Start project", "Show all works", "What the Datum?"];
       });
     }
 
+    // ─── Section anchor links — close menu, then smooth-scroll ─────────
+    /* The menu's section links are plain in-page #anchors. Letting the
+       browser handle them natively causes two problems: the hash jump
+       fights Lenis' smooth scroll, and on hover-to-open desktop the panel
+       stays open (the cursor is still inside it) so the backdrop blur
+       lingers over the very section the user just jumped to. So we
+       intercept: close the panel first — which restores Lenis + page
+       scroll and drops the backdrop — then defer the smooth scroll one
+       beat so the close leads. Mirrors the data-scroll-top handler above,
+       and covers both desktop (collapse + un-blur) and mobile (navigate
+       to the section, then collapse) in one path. */
+    const sectionLinks = panel.querySelectorAll<HTMLAnchorElement>(".navbar__link");
+    sectionLinks.forEach((link) => {
+      link.addEventListener("click", (event) => {
+        const href = link.getAttribute("href") ?? "";
+        if (!href.startsWith("#") || href.length < 2) return; // not an in-page anchor
+        // Intercept so the native jump never races Lenis and the panel
+        // always closes — even for a dangling anchor like #briefing (no
+        // section yet); at minimum the menu + backdrop blur must clear.
+        event.preventDefault();
+        const targetEl = document.getElementById(href.slice(1));
+        setState(false);
+        if (!targetEl) return; // nothing to scroll to — closing is enough
+        // Keep the URL in sync without a native jump (replaceState, not
+        // pushState: a hash-only history entry would let the back button
+        // change the URL without scrolling under Lenis — confusing).
+        history.replaceState(null, "", href);
+        const w = window as Window & {
+          __lenis?: { scrollTo: (t: HTMLElement, opts?: object) => void };
+        };
+        window.setTimeout(() => {
+          if (w.__lenis) {
+            w.__lenis.scrollTo(targetEl, { duration: 1.0 });
+          } else {
+            // Reduced-motion path: Lenis isn't initialised. Honour the
+            // user's motion preference rather than forcing a smooth scroll.
+            targetEl.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+          }
+        }, 50);
+      });
+    });
+
     // ─── Desktop hover-to-open ────────────────────────────────────────
     /* Safe zone is implemented in CSS via .navbar__panel::before — an
        invisible 16px ring that's part of the panel's hit-test area.
