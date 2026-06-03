@@ -163,6 +163,22 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
     </p>
   </div>
 
+  {/* Typed-intro guard — runs DURING parse (the title block is already in the
+      DOM just above), so it flags the headline for the typewriter entrance
+      BEFORE first paint. That avoids a flash of the full text before the
+      deferred module hides + types it. Set only when motion is allowed; on
+      reduced-motion / no-JS the attribute is never added, so the full headline
+      shows immediately (the CSS hide is keyed on [data-typing]). */}
+  <script is:inline>
+    (() => {
+      try {
+        if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        const b = document.querySelector(".hero__title-block");
+        if (b) b.setAttribute("data-typing", "");
+      } catch {}
+    })();
+  </script>
+
   {/* In-flow reserved slot for the docked video player. The actual player
       is the position:fixed `.hero__video` rendered AFTER </header> (outside
       the hero's isolated stacking context). This slot:
@@ -659,6 +675,36 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
     .hero__title-line-1,
     .hero__title-line-2 {
       will-change: auto;
+    }
+  }
+
+  /* ── Typed intro (load-time) ──────────────────────────────────────────────
+     `data-typing` is set pre-paint by the inline guard ONLY when motion is
+     allowed, so these hides never apply on reduced-motion / no-JS (full text
+     shows instantly). The module reveals per-char via `visibility` — chosen
+     over opacity so the reveal never collides with the scroll-exit's opacity
+     tail-fade on the same lines. `visibility: hidden` keeps full layout, so the
+     headline's right-edge baseline (Intelligence + subtitle) stays put; chars
+     pop in place rather than reflowing the line. */
+  .hero__title-block[data-typing] .hero__title-line-1,
+  .hero__title-block[data-typing] .hero__subtitle,
+  .hero__title-block[data-typing] .type-char {
+    visibility: hidden;
+  }
+  /* Intelligence is an SVG (not text) — wipe it open left-to-right instead of
+     typing glyphs. Stepped to ~one jump per letter so it reads as "written". */
+  .hero__title-block[data-typing] .hero__title-line-2 {
+    clip-path: inset(0 100% 0 0);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* Belt-and-braces: even if the attribute were present, never hide. */
+    .hero__title-block[data-typing] .hero__title-line-1,
+    .hero__title-block[data-typing] .hero__subtitle,
+    .hero__title-block[data-typing] .type-char {
+      visibility: visible;
+    }
+    .hero__title-block[data-typing] .hero__title-line-2 {
+      clip-path: none;
     }
   }
 
@@ -1676,7 +1722,10 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
          mobile so nothing is left translated off-screen. */
       const titleL1 = hero?.querySelector<HTMLElement>(".hero__title-line-1");
       const titleL2 = hero?.querySelector<HTMLElement>(".hero__title-line-2");
-      const HEADLINE_EXIT_END = 0.6; // fully split + blurred by 60% of hero scroll
+      // Fully split + blurred by 50% of hero scroll. Stays the SLOWER-feeling
+      // of the two (its scrub is the shared hero 0.15 — more inertia — vs the
+      // footer return's snappier 0.1), per "disappearance a bit slower than return".
+      const HEADLINE_EXIT_END = 0.5;
       // smootherstep — discrete-sampling mirror of the --ease-s CSS S-curve.
       const sEase = (t: number): number => {
         const x = t < 0 ? 0 : t > 1 ? 1 : t;
@@ -2130,6 +2179,105 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
     modalVideo.addEventListener("pause", () => {
       if (cursor.dataset.state === "pause") cursor.dataset.state = "play";
     });
+  }
+</script>
+
+<script>
+  /* ── Typed hero intro (load-time) ─────────────────────────────────────────
+     Types "Agentic decision" char-by-char, wipes the Intelligence SVG open
+     left-to-right (it's vector paths, not text, so it can't be typed glyph by
+     glyph), then types the subtitle — no caret. Gated by `data-typing`, set
+     pre-paint by the inline guard ONLY when motion is allowed; reduced-motion /
+     no-JS never get it, so the full headline shows immediately. On completion
+     the split <span>s are merged back into their original text nodes (after the
+     flag is dropped) so the resting headline keeps perfect kerning and the
+     scroll-exit operates on clean text. Per-char reveal uses `visibility` so it
+     never collides with the scroll-exit's opacity tail-fade on the same lines. */
+  const block = document.querySelector<HTMLElement>(".hero__title-block");
+  const reduceMotionIntro = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (block && !reduceMotionIntro && block.hasAttribute("data-typing")) {
+    const line1 = block.querySelector<HTMLElement>(".hero__title-line-1");
+    const line2 = block.querySelector<HTMLElement>(".hero__title-line-2");
+    const subText = block.querySelector<HTMLElement>(".hero__subtitle-text");
+
+    // Tunables (ms).
+    const CHAR_MS = 30; // headline per-character
+    const SUB_CHAR_MS = 11; // subtitle per-character (small text, long line)
+    const GAP_AFTER_LINE1 = 80;
+    const INTEL_MS = 500; // Intelligence SVG wipe duration
+    const GAP_AFTER_INTEL = 90;
+    const START_DELAY = 90; // let the first paint settle before typing
+
+    const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+    // Split an element's text into per-char <span>s, kept inline so the tight
+    // display letter-spacing stays correct. Returns the original string so the
+    // node can be merged back to clean text afterwards.
+    const split = (el: HTMLElement): { chars: HTMLElement[]; original: string } => {
+      const original = el.textContent ?? "";
+      el.textContent = "";
+      const chars: HTMLElement[] = [];
+      for (const ch of original) {
+        const s = document.createElement("span");
+        s.className = "type-char";
+        s.textContent = ch;
+        el.appendChild(s);
+        chars.push(s);
+      }
+      return { chars, original };
+    };
+
+    const typeChars = async (chars: HTMLElement[], perChar: number): Promise<void> => {
+      for (const c of chars) {
+        c.style.visibility = "visible";
+        await wait(perChar);
+      }
+    };
+
+    const words = line1
+      ? Array.from(line1.querySelectorAll<HTMLElement>(".hero__title-word"))
+      : [];
+    const wordSplits = words.map(split);
+    const subSplit = subText ? split(subText) : null;
+
+    // Reveal everything as clean text, then drop the flag. Removing data-typing
+    // FIRST is essential — merging back to plain text while the [data-typing]
+    // visibility:hidden is still active would re-hide the line.
+    const finish = (): void => {
+      block.removeAttribute("data-typing");
+      if (line2) {
+        line2.style.clipPath = "";
+        line2.style.transition = "";
+      }
+      words.forEach((w, i) => {
+        w.textContent = wordSplits[i].original;
+      });
+      if (subText && subSplit) subText.textContent = subSplit.original;
+    };
+
+    (async () => {
+      try {
+        await wait(START_DELAY);
+        // 1) "Agentic decision"
+        for (const ws of wordSplits) await typeChars(ws.chars, CHAR_MS);
+        // 2) Intelligence SVG — left-to-right wipe, stepped ≈ one jump per letter.
+        if (line2) {
+          const letters = (line2.textContent || "").replace(/\s/g, "").length || 12;
+          await wait(GAP_AFTER_LINE1);
+          line2.style.transition = `clip-path ${INTEL_MS}ms steps(${letters})`;
+          line2.style.clipPath = "inset(0 0 0 0)";
+          await wait(INTEL_MS + GAP_AFTER_INTEL);
+        }
+        // 3) Subtitle
+        if (subSplit) await typeChars(subSplit.chars, SUB_CHAR_MS);
+      } finally {
+        finish();
+      }
+    })();
+  } else {
+    // No-animation path — make sure nothing is left hidden.
+    block?.removeAttribute("data-typing");
   }
 </script>
 

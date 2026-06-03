@@ -825,9 +825,14 @@ const legalLinks = [
       const x = t < 0 ? 0 : t > 1 ? 1 : t;
       return x * x * x * (x * (x * 6 - 15) + 10);
     };
-    // inv = 1 at entry (parked at the edges) → 0 settled (home, in place).
+    // Snappier than the hero exit (per "return faster than disappearance"): the
+    // headline reaches home by RETURN_END of the entry range — then waits,
+    // already settled, as the footer locks — and the lower scrub below tracks
+    // scroll more tightly than the hero's shared 0.15. inv = 1 at entry (parked
+    // at the edges) → 0 settled (home, in place).
+    const RETURN_END = 0.4; // fully returned by 40% of the footer's entry scroll
     const apply = (p: number): void => {
-      const inv = 1 - sEase(p);
+      const inv = 1 - sEase(p / RETURN_END);
       const tx = window.innerWidth * 0.6 * inv;
       l1.style.transform = `translate3d(${(-tx).toFixed(1)}px, 0, 0)`;
       l2.style.transform = `translate3d(${tx.toFixed(1)}px, 0, 0)`;
@@ -844,7 +849,7 @@ const legalLinks = [
       trigger: ".footer",
       start: "top bottom", // footer's top reaches the viewport bottom (entering)
       end: "top top", // footer fills the viewport — the snap's resting position
-      scrub: 0.15,
+      scrub: 0.1, // snappier than the hero exit's shared 0.15 (return reads faster)
       invalidateOnRefresh: true,
       onUpdate: (self) => apply(self.progress),
       onRefresh: (self) => apply(self.progress),
