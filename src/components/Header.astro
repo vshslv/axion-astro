@@ -2180,9 +2180,13 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
       if (cursor.dataset.state === "pause") cursor.dataset.state = "play";
     });
   }
-</script>
 
-<script>
+  /* ── The typed hero intro lives in THIS (first) hoisted <script>, block-scoped.
+     Astro ships only the component's FIRST <script> to the production bundle, so
+     a standalone SECOND <script> was silently dropped from the build (it worked
+     in dev via Vite). Keeping it inside this script guarantees it ships; the bare
+     block isolates its consts from the code above. */
+  {
   /* ── Typed hero intro (load-time) ─────────────────────────────────────────
      Types "Agentic decision" char-by-char, wipes the Intelligence SVG open
      left-to-right (it's vector paths, not text, so it can't be typed glyph by
@@ -2278,6 +2282,7 @@ import intelligenceSVG from "../assets/intelligence-figma.svg?raw";
   } else {
     // No-animation path — make sure nothing is left hidden.
     block?.removeAttribute("data-typing");
+  }
   }
 </script>
 
