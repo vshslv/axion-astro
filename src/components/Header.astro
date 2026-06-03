@@ -12,9 +12,9 @@
  *   public/bg/hero-bg-poster.jpg            — JPEG q3 (1920×1280, downscaled from the original 6K render) — first-paint fallback before frames load
  *   public/bg/video-placeholder.jpg         — placeholder image inside the "How it works" widget
  *
- * NOTE: the HEVC/WebM video files (hero-bg-hevc.mp4 / hero-bg.webm) are no longer
- * referenced by this component — the autoplay loop was replaced with a scroll-
- * scrubbed AVIF sequence. Reverse scroll reverses the animation automatically.
+ * NOTE: the old HEVC/WebM hero loop (hero-bg-hevc.mp4 / hero-bg.webm) was removed —
+ * the autoplay loop was replaced with the scroll-scrubbed AVIF sequence above.
+ * Reverse scroll reverses the animation automatically.
  *
  * Loading sequence (page is silently scroll-locked until ready):
  *   1. LQIP (~320 bytes base64 in CSS) renders the moment HTML parses —
